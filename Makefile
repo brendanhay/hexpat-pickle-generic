@@ -4,7 +4,7 @@ build: .conf
 	cabal-dev build
 
 install:
-	cabal-dev install \
+	cabal-dev install -j \
 	 --disable-documentation \
 	 --disable-library-coverage
 
