@@ -1,6 +1,6 @@
 name:                  generic-xmlpickler
 version:               0.1.0
-synopsis:              Generic generation of HXT XmlPickler instances using GHC.Generics
+synopsis:              Generation of HXT XmlPickler instances using GHC.Generics
 license:               BSD3
 license-file:          LICENSE
 author:                Brendan Hay
@@ -15,7 +15,7 @@ description:
     Pending
 
 extra-source-files:
-    Generic generation of HXT XmlPickler instances using GHC.Generics
+    Generation of HXT XmlPickler instances using GHC.Generics
 
 source-repository head
     type:     git
