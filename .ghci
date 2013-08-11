@@ -1,0 +1,2 @@
+:set -isrc
+:load Text.XML.HXT.Arrow.Pickle.Generic
