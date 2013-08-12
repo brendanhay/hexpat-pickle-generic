@@ -1,4 +1,4 @@
-all: build lint
+all: build
 
 build: .conf
 	cabal-dev build
