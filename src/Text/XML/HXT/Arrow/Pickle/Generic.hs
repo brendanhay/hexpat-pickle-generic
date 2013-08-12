@@ -10,6 +10,9 @@
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 {-# OPTIONS_GHC -fno-warn-orphans            #-}
 
+
+{-# LANGUAGE MultiParamTypeClasses                    #-}
+
 -- |
 -- Module      : Text.XML.HXT.Arrow.Pickle.Generic
 -- Copyright   : (c) 2013 Brendan Hay <brendan.g.hay@gmail.com>
@@ -23,11 +26,10 @@
 
 module Text.XML.HXT.Arrow.Pickle.Generic where
 
-import Data.Char                        (isLower, toLower)
+import Data.ByteString       (ByteString)
+import Data.Char             (isLower, toLower)
 import GHC.Generics
-import Text.XML.HXT.Arrow.Pickle
-import Text.XML.HXT.Arrow.Pickle.Schema
-import Text.XML.HXT.Arrow.Pickle.Xml
+import Text.XML.Expat.Pickle
 
 --
 -- Options
@@ -47,73 +49,74 @@ defaultOptions = Options id (dropWhile isLower)
 -- IsXML
 --
 
-class IsXML a where
-    pickleXML :: Options -> PU a
+class IsXML t a where
+    pickleXML :: Options -> PU t a
 
-    default pickleXML :: (Generic a, GIsXML (Rep a)) => PU a
-    pickleXML = genericPickleXML defaultOptions
+    -- default pickleXML :: (Generic a, GIsXML (Rep a)) => PU t a
+    -- pickleXML = genericPickleXML defaultOptions
 
-class GIsXML f where
-    gPickleXML :: Options -> PU a -> PU (f a)
+class GIsXML t f where
+    gPickleXML :: Options -> PU t a -> PU t (f a)
 
-genericPickleXML opts =
-    (to, from) `xpWrap` (gPickleXML opts) (genericPickleXML opts)
+-- genericPickleXML opts =
+--     (to, from) `xpWrap` (gPickleXML opts) (genericPickleXML opts)
 
 --
 -- Generic Instances
 --
 
-instance GIsXML a => GIsXML (M1 i c a) where
+instance GIsXML t a => GIsXML t (M1 i c a) where
     gPickleXML opts = xpWrap (M1, unM1) . gPickleXML opts
 
-instance XmlPickler a => GIsXML (K1 i a) where
+instance XmlPickler t a => GIsXML t (K1 i a) where
     gPickleXML _ _ = (K1, unK1) `xpWrap` xpickle
 
-instance GIsXML U1 where
+instance GIsXML [t] U1 where
     gPickleXML _ _ = (const U1, const ()) `xpWrap` xpUnit
 
-instance (GIsXML f, GIsXML g) => GIsXML (f :+: g) where
+instance (GIsXML t f, GIsXML t g) => GIsXML t (f :+: g) where
     gPickleXML opts f = gPickleXML opts f `xpSum` gPickleXML opts f
 
-instance (GIsXML f, GIsXML g) => GIsXML (f :*: g) where
+instance (GIsXML [t] f, GIsXML [t] g) => GIsXML [t] (f :*: g) where
     gPickleXML opts f = xpWrap
         (uncurry (:*:), \(a :*: b) -> (a, b))
         (gPickleXML opts f `xpPair` gPickleXML opts f)
 
-instance (Constructor c, GIsXML f) => GIsXML (M1 C c f) where
+instance (Constructor c, GIsXML [Node String t] f) => GIsXML [Node String t] (M1 C c f) where
     gPickleXML opts@Options{..} f = xpElem
         (constructorTagModifier $ conName (undefined :: M1 C c f r))
         ((M1, unM1) `xpWrap` (gPickleXML opts f))
+        ((M1, unM1) `xpWrap` (gPickleXML opts f))
 
-instance (Selector s, GIsXML f) => GIsXML (M1 S s f) where
-    gPickleXML opts@Options{..} f = xpElem
-        (fieldLabelModifier $ selName (undefined :: M1 S s f r))
-        ((M1, unM1) `xpWrap` gPickleXML opts f)
+-- instance (Selector s, GIsXML t f) => GIsXML t (M1 S s f) where
+--     gPickleXML opts@Options{..} f = xpElem
+--         (fieldLabelModifier $ selName (undefined :: M1 S s f r))
+--         ((M1, unM1) `xpWrap` gPickleXML opts f)
 
 --
 -- Concrete Instances
 --
 
-instance XmlPickler Bool where
-    xpickle = (inp, out) `xpWrap` xpText
-      where
-        inp (lower -> "true")  = True
-        inp (lower -> "false") = False
-        inp _ = error "No parse for bool in toBool (XmlPickler)."
+-- instance XmlPickler Bool where
+--     xpickle = (inp, out) `xpWrap` xpText
+--       where
+--         inp (lower -> "true")  = True
+--         inp (lower -> "false") = False
+--         inp _ = error "No parse for bool in toBool (XmlPickler)."
 
-        out True  = "true"
-        out False = "false"
+--         out True  = "true"
+--         out False = "false"
 
-        lower = map toLower
+--         lower = map toLower
 
-instance GIsXML (K1 i String) where
-    gPickleXML _ _ = (K1, unK1) `xpWrap` xpText0
+-- instance GIsXML t (K1 i String) where
+--     gPickleXML _ _ = (K1, unK1) `xpWrap` xpText0
 
 --
 -- Combinators
 --
 
-xpSum :: PU (f r) -> PU (g r) -> PU ((f :+: g) r)
+xpSum :: PU t (f r) -> PU t (g r) -> PU t ((f :+: g) r)
 xpSum left right = (inp, out) `xpWrap` xpEither left right
   where
     inp (Left  x) = L1 x
@@ -122,17 +125,16 @@ xpSum left right = (inp, out) `xpWrap` xpEither left right
     out (L1 x) = Left x
     out (R1 x) = Right x
 
-xpEither :: PU a -> PU b -> PU (Either a b)
-xpEither ~(PU fl tl sa) ~(PU fr tr sb) = PU pickle unpickle schema
+xpEither :: PU t a -> PU t b -> PU t (Either a b)
+xpEither ~(PU _ uea pa) ~(PU ub ueb pb) = PU unpickle unpickleEither pickle
   where
-    pickle (Left x)  = fl x
-    pickle (Right y) = fr y
+    unpickle t = case uea t of
+        Right x -> Left x
+        Left  _ -> Right $ ub t
 
-    unpickle = UP $ \x ->
-        case runUP tl x of
-            (Left _, _) -> lmap (fmap Right) (runUP tr x)
-            r           -> lmap (fmap Left) r
+    unpickleEither t = case uea t of
+        Right x -> Right . Left $ x
+        Left  _ -> Right `fmap` ueb t
 
-    lmap f (a, b) = (f a, b)
-
-    schema = sa `scAlt` sb
+    pickle (Left x)  = pa x
+    pickle (Right y) = pb y
