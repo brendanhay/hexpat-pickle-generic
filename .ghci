@@ -1,2 +1,5 @@
 :set -isrc
+:set -XOverloadedStrings
+:set -XDeriveGeneric
+
 :load Text.XML.HXT.Arrow.Pickle.Generic

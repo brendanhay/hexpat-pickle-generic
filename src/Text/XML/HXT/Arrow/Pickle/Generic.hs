@@ -1,6 +1,7 @@
 {-# LANGUAGE DefaultSignatures               #-}
 {-# LANGUAGE FlexibleContexts                #-}
 {-# LANGUAGE FlexibleInstances               #-}
+{-# LANGUAGE OverlappingInstances            #-}
 {-# LANGUAGE OverloadedStrings               #-}
 {-# LANGUAGE RecordWildCards                 #-}
 {-# LANGUAGE ScopedTypeVariables             #-}
@@ -24,14 +25,11 @@
 module Text.XML.HXT.Arrow.Pickle.Generic where
 
 import Data.Char                        (isLower, toLower)
+import Data.Maybe
 import GHC.Generics
-import Text.XML.HXT.Arrow.Pickle
 import Text.XML.HXT.Arrow.Pickle.Schema
 import Text.XML.HXT.Arrow.Pickle.Xml
-
---
--- Options
---
+import Text.XML.HXT.Core
 
 data Options = Options
     { constructorTagModifier :: String -> String
@@ -43,12 +41,8 @@ data Options = Options
 defaultOptions :: Options
 defaultOptions = Options id (dropWhile isLower)
 
---
--- IsXML
---
-
 class IsXML a where
-    pickleXML :: Options -> PU a
+    pickleXML :: PU a
 
     default pickleXML :: (Generic a, GIsXML (Rep a)) => PU a
     pickleXML = genericPickleXML defaultOptions
@@ -59,15 +53,27 @@ class GIsXML f where
 genericPickleXML opts =
     (to, from) `xpWrap` (gPickleXML opts) (genericPickleXML opts)
 
---
--- Generic Instances
---
+encode :: IsXML a => a -> String
+encode = concat . (pickleDoc pickleXML >>> runLA (writeDocumentToString sys))
+  where
+    sys = [ withValidate no
+          , withCheckNamespaces no
+          , withRemoveWS yes
+          ]
+
+decode :: IsXML a => String -> Either String a
+decode = fromMaybe (Left "Failed to parse anything from input")
+    . listToMaybe
+    . runLA (xread >>> arr (unpickleDoc' pickleXML))
 
 instance GIsXML a => GIsXML (M1 i c a) where
     gPickleXML opts = xpWrap (M1, unM1) . gPickleXML opts
 
 instance XmlPickler a => GIsXML (K1 i a) where
     gPickleXML _ _ = (K1, unK1) `xpWrap` xpickle
+
+instance GIsXML (K1 i String) where
+    gPickleXML _ _ = (K1, unK1) `xpWrap` xpText0
 
 instance GIsXML U1 where
     gPickleXML _ _ = (const U1, const ()) `xpWrap` xpUnit
@@ -90,10 +96,6 @@ instance (Selector s, GIsXML f) => GIsXML (M1 S s f) where
         (fieldLabelModifier $ selName (undefined :: M1 S s f r))
         ((M1, unM1) `xpWrap` gPickleXML opts f)
 
---
--- Concrete Instances
---
-
 instance XmlPickler Bool where
     xpickle = (inp, out) `xpWrap` xpText
       where
@@ -106,15 +108,8 @@ instance XmlPickler Bool where
 
         lower = map toLower
 
-instance GIsXML (K1 i String) where
-    gPickleXML _ _ = (K1, unK1) `xpWrap` xpText0
-
---
--- Combinators
---
-
 xpSum :: PU (f r) -> PU (g r) -> PU ((f :+: g) r)
-xpSum left right = (inp, out) `xpWrap` xpEither left right
+xpSum l r = (inp, out) `xpWrap` xpEither l r
   where
     inp (Left  x) = L1 x
     inp (Right x) = R1 x
