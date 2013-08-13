@@ -1,16 +1,14 @@
 {-# LANGUAGE DefaultSignatures               #-}
 {-# LANGUAGE FlexibleContexts                #-}
 {-# LANGUAGE FlexibleInstances               #-}
+{-# LANGUAGE MultiParamTypeClasses           #-}
 {-# LANGUAGE OverloadedStrings               #-}
 {-# LANGUAGE RecordWildCards                 #-}
 {-# LANGUAGE ScopedTypeVariables             #-}
 {-# LANGUAGE TypeOperators                   #-}
-{-# LANGUAGE MultiParamTypeClasses           #-}
+{-# LANGUAGE ViewPatterns                    #-}
 
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
-
-
-{-# LANGUAGE DeriveGeneric #-}
 
 -- |
 -- Module      : Text.XML.Expat.Generic
@@ -23,13 +21,59 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 
-module Text.XML.Expat.Generic where
+module Text.XML.Expat.Generic
+    (
+    -- * Class
+      IsXML   (..)
 
-import Control.Exception     (throw)
-import Data.ByteString       (ByteString)
-import Data.Char             (isLower)
-import GHC.Generics
-import Text.XML.Expat.Pickle
+    -- * Functions
+    , encode
+    , decode
+    , decodeEither
+
+    -- * Defining Picklers
+    , Options (..)
+    , defaultOptions
+    , genericXMLPickler
+
+    -- * Pickler Combinators
+    , xpSum
+    , xpEither
+    ) where
+
+import           Data.ByteString       (ByteString)
+import qualified Data.ByteString.Char8 as BS
+import           Data.Char             (isLower, toLower)
+import           GHC.Generics
+import           Text.XML.Expat.Pickle
+
+--
+-- Class
+--
+
+class IsXML a where
+    xmlPickler :: PU [UNode ByteString] a
+
+    default xmlPickler :: (Generic a, GIsXML [UNode ByteString] (Rep a))
+                      => PU [UNode ByteString] a
+    xmlPickler = genericXMLPickler defaultOptions
+
+--
+-- Functions
+--
+
+encode :: IsXML a => a -> ByteString
+encode = pickleXML' (xpRoot xmlPickler)
+
+decode :: IsXML a => ByteString -> Maybe a
+decode = either (const Nothing) Just . decodeEither
+
+decodeEither :: IsXML a => ByteString -> Either String a
+decodeEither = unpickleXML' defaultParseOptions (xpRoot xmlPickler)
+
+--
+-- Defining Picklers
+--
 
 data Options = Options
     { constructorTagModifier :: String -> String
@@ -41,12 +85,12 @@ data Options = Options
 defaultOptions :: Options
 defaultOptions = Options id (dropWhile isLower)
 
-class IsXML a where
-    xmlPickler :: PU [UNode ByteString] a
+genericXMLPickler opts =
+    (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
 
-    default xmlPickler :: (Generic a, GIsXML [UNode ByteString] (Rep a))
-                      => PU [UNode ByteString] a
-    xmlPickler = genericXMLPickler defaultOptions
+--
+-- Instances
+--
 
 instance IsXML Int where
     xmlPickler = xpContent xpPrim
@@ -54,8 +98,8 @@ instance IsXML Int where
 instance IsXML ByteString where
     xmlPickler = xpContent xpText0
 
-instance XmlPickler t Bool where
-    xpickle = (inp, out) `xpWrap` xpText
+instance IsXML Bool where
+    xmlPickler = (inp, out) `xpWrap` xpContent xpText
       where
         inp (lower -> "true")  = True
         inp (lower -> "false") = False
@@ -64,29 +108,14 @@ instance XmlPickler t Bool where
         out True  = "true"
         out False = "false"
 
-        lower = map toLower
+        lower = BS.map toLower
 
 instance IsXML a => IsXML (Maybe a) where
     xmlPickler = xpOption xmlPickler
 
-encode :: IsXML a => a -> ByteString
-encode = pickleXML' (xpRoot xmlPickler)
-
-decode :: IsXML a => ByteString -> Maybe a
-decode = either (const Nothing) Just . decodeEither
-
-decodeEither :: IsXML a => ByteString -> Either String a
-decodeEither = unpickleXML' defaultParseOptions (xpRoot xmlPickler)
-
-
-data Thing = Thing { thingInt :: Int, thingString :: ByteString } deriving (Show, Generic)
-
-thing = Thing 2 "test"
-
-instance IsXML Thing
-
-genericXMLPickler opts =
-    (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
+--
+-- Generics
+--
 
 class GIsXML t f where
     gXMLPickler :: Options -> PU t a -> PU t (f a)
@@ -120,37 +149,9 @@ instance (Selector s, GIsXML [UNode ByteString] f)
         (gxFromString . fieldLabelModifier $ selName (undefined :: M1 S s f r))
         ((M1, unM1) `xpWrap` gXMLPickler opts f)
 
-
--- instance XmlPickler [t] () where
---     xpickle = xpUnit
-
--- instance (XmlPickler [t] a, XmlPickler [t] b) => XmlPickler [t] (a, b) where
---     xpickle = xpPair xpickle xpickle
-
--- instance ( XmlPickler [t] a
---          , XmlPickler [t] b
---          , XmlPickler [t] c
---          ) => XmlPickler [t] (a, b, c) where
---     xpickle = xpTriple xpickle xpickle xpickle
-
--- instance ( XmlPickler [t] a
---          , XmlPickler [t] b
---          , XmlPickler [t] c
---          , XmlPickler [t] d
---          ) => XmlPickler [t] (a, b, c, d) where
---     xpickle = xp4Tuple xpickle xpickle xpickle xpickle
-
--- instance ( XmlPickler [t] a
---          , XmlPickler [t] b
---          , XmlPickler [t] c
---          , XmlPickler [t] d
---          , XmlPickler [t] e
---          ) => XmlPickler [t] (a, b, c, d, e) where
---     xpickle = xp5Tuple xpickle xpickle xpickle xpickle xpickle
-
--- instance GIsXML t (K1 i String) where
---     gXMLPickler _ _ = (K1, unK1) `xpWrap` xpText0
-
+--
+-- Combinators
+--
 
 xpSum :: PU t (f r) -> PU t (g r) -> PU t ((f :+: g) r)
 xpSum left right = (inp, out) `xpWrap` xpEither left right

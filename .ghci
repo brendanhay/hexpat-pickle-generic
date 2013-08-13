@@ -2,4 +2,4 @@
 :set -XDeriveGeneric
 :set -XOverloadedStrings
 
-:load Text.XML.Expat.Pickle.Generic
+:load Text.XML.Expat.Generic
