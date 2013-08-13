@@ -39,13 +39,23 @@ module Text.XML.Expat.Generic
     -- * Pickler Combinators
     , xpSum
     , xpEither
+
+    -- * Re-exported Combinators
+    , xpText0
+    , xpText
+    , xpList0
+    , xpList
+    , xpContent
+    , xpPrim
     ) where
 
 import           Data.ByteString       (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import           Data.Char             (isLower, toLower)
+import           Data.Text             (Text)
 import           GHC.Generics
-import           Text.XML.Expat.Pickle
+import qualified Text.XML.Expat.Pickle as Pickle
+import           Text.XML.Expat.Pickle hiding (xpPrim)
 
 --
 -- Class
@@ -88,15 +98,28 @@ defaultOptions = Options id (dropWhile isLower)
 genericXMLPickler opts =
     (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
 
+genericXMLStringPickler :: GenericXMLString t => PU [UNode ByteString] t
+genericXMLStringPickler =
+    (gxFromByteString, gxToByteString) `xpWrap` xpContent xpText0
+
 --
 -- Instances
 --
 
 instance IsXML Int where
-    xmlPickler = xpContent xpPrim
+    xmlPickler = xpPrim
+
+instance IsXML Integer where
+    xmlPickler = xpPrim
+
+instance IsXML String where
+    xmlPickler = genericXMLStringPickler
+
+instance IsXML Text where
+    xmlPickler = genericXMLStringPickler
 
 instance IsXML ByteString where
-    xmlPickler = xpContent xpText0
+    xmlPickler = genericXMLStringPickler
 
 instance IsXML Bool where
     xmlPickler = (inp, out) `xpWrap` xpContent xpText
@@ -112,6 +135,9 @@ instance IsXML Bool where
 
 instance IsXML a => IsXML (Maybe a) where
     xmlPickler = xpOption xmlPickler
+
+instance IsXML a => IsXML [a] where
+    xmlPickler = xpList0 xmlPickler
 
 --
 -- Generics
@@ -152,6 +178,9 @@ instance (Selector s, GIsXML [UNode ByteString] f)
 --
 -- Combinators
 --
+
+xpPrim :: (Read b, Show b, GenericXMLString t) => PU [Node a t] b
+xpPrim = xpContent Pickle.xpPrim
 
 xpSum :: PU t (f r) -> PU t (g r) -> PU t ((f :+: g) r)
 xpSum left right = (inp, out) `xpWrap` xpEither left right
