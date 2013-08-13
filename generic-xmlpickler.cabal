@@ -7,7 +7,7 @@ author:                Brendan Hay
 maintainer:            Brendan Hay <brendan.g.hay@gmail.com>
 copyright:             Copyright (c) 2013 Brendan Hay
 stability:             Experimental
-category:              AWS, Network
+category:              Data, XML
 build-type:            Simple
 cabal-version:         >= 1.10
 
@@ -26,15 +26,13 @@ library
     hs-source-dirs:    src
 
     exposed-modules:
-        Text.XML.HXT.Arrow.Pickle.Generic
+        Text.XML.Expat.Pickle.Generic
 
     ghc-options:
         -Wall
         -O2
 
     build-depends:
-        base > 4   && < 5
+        base > 4      && < 5
       , bytestring
---      , hxt  > 9.1 && < 9.4
-      , hexpat
       , hexpat-pickle
