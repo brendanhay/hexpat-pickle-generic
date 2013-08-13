@@ -1,37 +1,40 @@
-name:                  generic-xmlpickler
+name:                  hexpat-generic
 version:               0.1.0
-synopsis:              Generation of HXT XmlPickler instances using GHC.Generics
+synopsis:              An IsXML class and related GHC.Generics implementation for hexpat
 license:               BSD3
 license-file:          LICENSE
 author:                Brendan Hay
 maintainer:            Brendan Hay <brendan.g.hay@gmail.com>
 copyright:             Copyright (c) 2013 Brendan Hay
 stability:             Experimental
-category:              AWS, Network
+category:              Data, XML
 build-type:            Simple
 cabal-version:         >= 1.10
 
 description:
-    Pending
+    An IsXML class and GHC.Generics implementation for pickleable
+    .
+    data types using hexpat and hexpat-pickle.
 
 extra-source-files:
-    Generation of HXT XmlPickler instances using GHC.Generics
+    README.md
 
 source-repository head
     type:     git
-    location: git://github.com/brendanhay/aws-haskell.git
+    location: git://github.com/brendanhay/hexpat-generic.git
 
 library
     default-language:  Haskell2010
     hs-source-dirs:    src
 
     exposed-modules:
-        Text.XML.HXT.Arrow.Pickle.Generic
+        Text.XML.Expat.Generic
 
     ghc-options:
         -Wall
         -O2
 
     build-depends:
-        base > 4   && < 5
-      , hxt  > 9.1 && < 9.4
+        base > 4      && < 5
+      , bytestring
+      , hexpat-pickle
