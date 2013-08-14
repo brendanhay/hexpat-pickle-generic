@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleInstances               #-}
 {-# LANGUAGE MultiParamTypeClasses           #-}
 {-# LANGUAGE OverloadedStrings               #-}
-{-# LANGUAGE RecordWildCards                 #-}
 {-# LANGUAGE ScopedTypeVariables             #-}
 {-# LANGUAGE TypeOperators                   #-}
 {-# LANGUAGE ViewPatterns                    #-}
@@ -51,8 +50,7 @@ module Text.XML.Expat.Generic
     ) where
 
 import           Data.ByteString       (ByteString)
-import qualified Data.ByteString.Char8 as BS
-import           Data.Char             (isLower, toLower)
+import           Data.Char             (isLower)
 import           Data.Text             (Text)
 import           GHC.Generics
 import qualified Text.XML.Expat.Pickle as Pickle
@@ -151,14 +149,14 @@ instance (Datatype d, GIsXML t f) => GIsXML t (M1 D d f) where
 
 instance (Constructor c, GIsXML [UNode ByteString] f)
          => GIsXML [UNode ByteString] (M1 C c f) where
-    gXMLPickler opts@Options{..} f = xpElemNodes
-        (gxFromString . constructorTagModifier $ conName (undefined :: M1 C c f r))
+    gXMLPickler opts f = xpElemNodes
+        (gxFromString . constructorTagModifier opts $ conName (undefined :: M1 C c f r))
         ((M1, unM1) `xpWrap` gXMLPickler opts f)
 
 instance (Selector s, GIsXML [UNode ByteString] f)
          => GIsXML [UNode ByteString] (M1 S s f) where
-    gXMLPickler opts@Options{..} f = xpElemNodes
-        (gxFromString . fieldLabelModifier $ selName (undefined :: M1 S s f r))
+    gXMLPickler opts f = xpElemNodes
+        (gxFromString . fieldLabelModifier opts $ selName (undefined :: M1 S s f r))
         ((M1, unM1) `xpWrap` gXMLPickler opts f)
 
 --
