@@ -47,6 +47,7 @@ module Text.XML.Expat.Generic
     , xpList
     , xpContent
     , xpPrim
+    , xpWrap
     ) where
 
 import           Data.ByteString       (ByteString)
@@ -112,26 +113,11 @@ instance IsXML Int where
 instance IsXML Integer where
     xmlPickler = xpPrim
 
-instance IsXML String where
-    xmlPickler = genericXMLStringPickler
-
 instance IsXML Text where
     xmlPickler = genericXMLStringPickler
 
 instance IsXML ByteString where
     xmlPickler = genericXMLStringPickler
-
-instance IsXML Bool where
-    xmlPickler = (inp, out) `xpWrap` xpContent xpText
-      where
-        inp (lower -> "true")  = True
-        inp (lower -> "false") = False
-        inp _ = error "No parse for bool in toBool (XmlPickler)."
-
-        out True  = "true"
-        out False = "false"
-
-        lower = BS.map toLower
 
 instance IsXML a => IsXML (Maybe a) where
     xmlPickler = xpOption xmlPickler
