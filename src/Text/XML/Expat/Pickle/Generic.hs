@@ -25,17 +25,17 @@ module Text.XML.Expat.Pickle.Generic
     -- * Class
       IsXML   (..)
 
+    -- * Options
+    , Options (..)
+    , defaultOptions
+
     -- * Functions
+    , genericXMLPickler
     , encode
     , decode
     , decodeEither
 
-    -- * Defining Picklers
-    , Options (..)
-    , defaultOptions
-    , genericXMLPickler
-
-    -- * Pickler Combinators
+    -- * Combinators
     , xpSum
     , xpEither
 
