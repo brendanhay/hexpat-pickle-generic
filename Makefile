@@ -12,6 +12,9 @@ clean:
 	-rm -rf .conf dist
 	cabal-dev clean
 
+doc:
+	cabal-dev haddock
+
 lint:
 	hlint src
 

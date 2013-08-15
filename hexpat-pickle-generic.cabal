@@ -13,7 +13,6 @@ cabal-version:         >= 1.10
 
 description:
     An IsXML class and GHC.Generics implementation for pickleable
-    .
     data types using hexpat and hexpat-pickle.
 
 extra-source-files:

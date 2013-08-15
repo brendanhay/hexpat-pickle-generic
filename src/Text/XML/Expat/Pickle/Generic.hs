@@ -9,7 +9,6 @@
 
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 
--- |
 -- Module      : Text.XML.Expat.Pickle.Generic
 -- Copyright   : (c) 2013 Brendan Hay <brendan.g.hay@gmail.com>
 -- License     : This Source Code Form is subject to the terms of
@@ -25,19 +24,25 @@ module Text.XML.Expat.Pickle.Generic
     -- * Class
       IsXML   (..)
 
-    -- * Options
-    , Options (..)
-    , defaultOptions
-
     -- * Functions
-    , genericXMLPickler
     , encode
     , decode
     , decodeEither
 
+    -- * Re-exported Data Types
+    , PU      (..)
+
+    -- * Options
+    , Options (..)
+    , defaultOptions
+
+    -- * Generics
+    , genericXMLPickler
+
     -- * Combinators
     , xpSum
     , xpEither
+    , xpGenericString
 
     -- * Re-exported Combinators
     , xpText0
@@ -94,38 +99,12 @@ data Options = Options
 defaultOptions :: Options
 defaultOptions = Options id (dropWhile isLower)
 
-genericXMLPickler opts =
-    (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
-
-genericXMLStringPickler :: GenericXMLString t => PU [UNode ByteString] t
-genericXMLStringPickler =
-    (gxFromByteString, gxToByteString) `xpWrap` xpContent xpText0
-
---
--- Instances
---
-
-instance IsXML Int where
-    xmlPickler = xpPrim
-
-instance IsXML Integer where
-    xmlPickler = xpPrim
-
-instance IsXML Text where
-    xmlPickler = genericXMLStringPickler
-
-instance IsXML ByteString where
-    xmlPickler = genericXMLStringPickler
-
-instance IsXML a => IsXML (Maybe a) where
-    xmlPickler = xpOption xmlPickler
-
-instance IsXML a => IsXML [a] where
-    xmlPickler = xpList0 xmlPickler
-
 --
 -- Generics
 --
+
+genericXMLPickler opts =
+    (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
 
 class GIsXML t f where
     gXMLPickler :: Options -> PU t a -> PU t (f a)
@@ -189,3 +168,28 @@ xpEither ~(PU _ uea pa) ~(PU ub ueb pb) =
 
     pickle (Left x)  = pa x
     pickle (Right y) = pb y
+
+xpGenericString :: GenericXMLString t => PU [UNode ByteString] t
+xpGenericString = (gxFromByteString, gxToByteString) `xpWrap` xpContent xpText0
+
+--
+-- Instances
+--
+
+instance IsXML Int where
+    xmlPickler = xpPrim
+
+instance IsXML Integer where
+    xmlPickler = xpPrim
+
+instance IsXML Text where
+    xmlPickler = xpGenericString
+
+instance IsXML ByteString where
+    xmlPickler = xpGenericString
+
+instance IsXML a => IsXML (Maybe a) where
+    xmlPickler = xpOption xmlPickler
+
+instance IsXML a => IsXML [a] where
+    xmlPickler = xpList0 xmlPickler
