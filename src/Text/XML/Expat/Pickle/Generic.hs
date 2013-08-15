@@ -10,7 +10,7 @@
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 
 -- |
--- Module      : Text.XML.Expat.Generic
+-- Module      : Text.XML.Expat.Pickle.Generic
 -- Copyright   : (c) 2013 Brendan Hay <brendan.g.hay@gmail.com>
 -- License     : This Source Code Form is subject to the terms of
 --               Berkeley Software Distribution License, v. 3.0.
@@ -20,7 +20,7 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 
-module Text.XML.Expat.Generic
+module Text.XML.Expat.Pickle.Generic
     (
     -- * Class
       IsXML   (..)
