@@ -92,8 +92,8 @@ data Options = Options
       -- ^ Function applied to record field labels.
     }
 
-defaultXMLOptions :: Options
-defaultXMLOptions = Options id (dropWhile isLower)
+defaultOptions :: Options
+defaultOptions = Options id (dropWhile isLower)
 
 --
 -- Generics
