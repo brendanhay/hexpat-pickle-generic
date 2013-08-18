@@ -25,16 +25,15 @@ module Text.XML.Expat.Pickle.Generic
       IsXML   (..)
 
     -- * Functions
-    , encode
-    , decode
-    , decodeEither
+    , encodeXML
+    , decodeXML
 
     -- * Re-exported Data Types
     , PU      (..)
 
     -- * Options
-    , Options (..)
-    , defaultOptions
+    , GenericXMLOptions (..)
+    , defaultXMLOptions
 
     -- * Generics
     , genericXMLPickler
@@ -70,34 +69,33 @@ class IsXML a where
 
     default xmlPickler :: (Generic a, GIsXML [UNode ByteString] (Rep a))
                       => PU [UNode ByteString] a
-    xmlPickler = genericXMLPickler defaultOptions
+    xmlPickler = genericXMLPickler defaultXMLOptions
 
 --
 -- Functions
 --
 
-encode :: IsXML a => a -> ByteString
-encode = pickleXML' (xpRoot xmlPickler)
+encodeXML :: IsXML a => a -> ByteString
+encodeXML = pickleXML' (xpRoot xmlPickler)
 
-decode :: IsXML a => ByteString -> Maybe a
-decode = either (const Nothing) Just . decodeEither
-
-decodeEither :: IsXML a => ByteString -> Either String a
-decodeEither = unpickleXML' defaultParseOptions (xpRoot xmlPickler)
+decodeXML :: IsXML a => ByteString -> Either String a
+decodeXML = unpickleXML' defaultParseOptions (xpRoot xmlPickler)
 
 --
 -- Defining Picklers
 --
 
-data Options = Options
+data GenericXMLOptions = GenericXMLOptions
     { constructorTagModifier :: String -> String
       -- ^ Function applied to constructor tags.
     , fieldLabelModifier     :: String -> String
       -- ^ Function applied to record field labels.
     }
 
-defaultOptions :: Options
-defaultOptions = Options id (dropWhile isLower)
+type Options = GenericXMLOptions
+
+defaultXMLOptions :: Options
+defaultXMLOptions = GenericXMLOptions id (dropWhile isLower)
 
 --
 -- Generics
