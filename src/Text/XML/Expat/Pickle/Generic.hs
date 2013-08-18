@@ -22,18 +22,18 @@
 module Text.XML.Expat.Pickle.Generic
     (
     -- * Class
-      IsXML             (..)
+      IsXML   (..)
 
     -- * Functions
     , encodeXML
     , decodeXML
 
     -- * Re-exported Data Types
-    , PU                (..)
+    , PU      (..)
 
     -- * Options
-    , GenericXMLOptions (..)
-    , defaultXMLOptions
+    , Options (..)
+    , defaultOptions
 
     -- * Generics
     , genericXMLPickler
@@ -69,7 +69,7 @@ class IsXML a where
 
     default xmlPickler :: (Generic a, GIsXML [UNode ByteString] (Rep a))
                       => PU [UNode ByteString] a
-    xmlPickler = genericXMLPickler defaultXMLOptions
+    xmlPickler = genericXMLPickler defaultOptions
 
 --
 -- Functions
@@ -85,17 +85,15 @@ decodeXML = unpickleXML' defaultParseOptions (xpRoot xmlPickler)
 -- Defining Picklers
 --
 
-data GenericXMLOptions = GenericXMLOptions
+data Options = Options
     { constructorTagModifier :: String -> String
       -- ^ Function applied to constructor tags.
     , fieldLabelModifier     :: String -> String
       -- ^ Function applied to record field labels.
     }
 
-type Options = GenericXMLOptions
-
 defaultXMLOptions :: Options
-defaultXMLOptions = GenericXMLOptions id (dropWhile isLower)
+defaultXMLOptions = Options id (dropWhile isLower)
 
 --
 -- Generics
