@@ -22,18 +22,18 @@
 module Text.XML.Expat.Pickle.Generic
     (
     -- * Class
-      IsXML   (..)
+      IsXML      (..)
 
     -- * Functions
     , encodeXML
     , decodeXML
 
     -- * Re-exported Data Types
-    , PU      (..)
+    , PU         (..)
 
     -- * Options
-    , Options (..)
-    , defaultOptions
+    , XMLOptions (..)
+    , defaultXMLOptions
 
     -- * Generics
     , genericXMLPickler
@@ -69,7 +69,7 @@ class IsXML a where
 
     default xmlPickler :: (Generic a, GIsXML [UNode ByteString] (Rep a))
                       => PU [UNode ByteString] a
-    xmlPickler = genericXMLPickler defaultOptions
+    xmlPickler = genericXMLPickler defaultXMLOptions
 
 --
 -- Functions
@@ -85,15 +85,17 @@ decodeXML = unpickleXML' defaultParseOptions (xpRoot xmlPickler)
 -- Defining Picklers
 --
 
-data Options = Options
-    { constructorTagModifier :: String -> String
+data XMLOptions = XMLOptions
+    { xmlCtorModifier  :: String -> String
       -- ^ Function applied to constructor tags.
-    , fieldLabelModifier     :: String -> String
+    , xmlFieldModifier :: String -> String
       -- ^ Function applied to record field labels.
     }
 
-defaultOptions :: Options
-defaultOptions = Options id (dropWhile isLower)
+type Options = XMLOptions
+
+defaultXMLOptions :: Options
+defaultXMLOptions = XMLOptions id (dropWhile isLower)
 
 --
 -- Generics
@@ -125,13 +127,13 @@ instance (Datatype d, GIsXML t f) => GIsXML t (M1 D d f) where
 instance (Constructor c, GIsXML [UNode ByteString] f)
          => GIsXML [UNode ByteString] (M1 C c f) where
     gXMLPickler opts f = xpElemNodes
-        (gxFromString . constructorTagModifier opts $ conName (undefined :: M1 C c f r))
+        (gxFromString . xmlCtorModifier opts $ conName (undefined :: M1 C c f r))
         ((M1, unM1) `xpWrap` gXMLPickler opts f)
 
 instance (Selector s, GIsXML [UNode ByteString] f)
          => GIsXML [UNode ByteString] (M1 S s f) where
     gXMLPickler opts f = xpElemNodes
-        (gxFromString . fieldLabelModifier opts $ selName (undefined :: M1 S s f r))
+        (gxFromString . xmlFieldModifier opts $ selName (undefined :: M1 S s f r))
         ((M1, unM1) `xpWrap` gXMLPickler opts f)
 
 --
