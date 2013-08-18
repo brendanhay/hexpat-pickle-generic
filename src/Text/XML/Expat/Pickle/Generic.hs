@@ -22,14 +22,14 @@
 module Text.XML.Expat.Pickle.Generic
     (
     -- * Class
-      IsXML   (..)
+      IsXML             (..)
 
     -- * Functions
     , encodeXML
     , decodeXML
 
     -- * Re-exported Data Types
-    , PU      (..)
+    , PU                (..)
 
     -- * Options
     , GenericXMLOptions (..)
