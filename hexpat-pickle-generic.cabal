@@ -1,6 +1,6 @@
 name:                  hexpat-pickle-generic
 version:               0.1.0
-synopsis:              An IsXML class and related GHC.Generics implementation for hexpat
+synopsis:              Picklers for de/serialising Generic data types to and from XML
 license:               BSD3
 license-file:          LICENSE
 author:                Brendan Hay
