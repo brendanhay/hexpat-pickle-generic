@@ -1,5 +1,5 @@
 name:                  hexpat-pickle-generic
-version:               0.1.3
+version:               0.1.4
 synopsis:              Picklers for de/serialising Generic data types to and from XML
 license:               BSD3
 license-file:          LICENSE
@@ -36,5 +36,25 @@ library
     build-depends:
         base          >= 4.6 && < 5
       , bytestring
+      , hexpat
       , hexpat-pickle
       , text
+
+test-suite hexpat-pickle-generic-tests
+    default-language:   Haskell2010
+    type:               exitcode-stdio-1.0
+    hs-source-dirs:     test
+    main-is:            Main.hs
+
+    ghc-options:
+        -Wall
+        -fwarn-tabs
+
+    build-depends:
+        base                       >= 4.6 && < 5
+      , bytestring
+      , hexpat
+      , hexpat-pickle-generic
+      , QuickCheck                 >= 2.5
+      , test-framework             >= 0.8
+      , test-framework-quickcheck2 >= 0.3

@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts                #-}
 {-# LANGUAGE FlexibleInstances               #-}
 {-# LANGUAGE MultiParamTypeClasses           #-}
+{-# LANGUAGE OverlappingInstances            #-}
 {-# LANGUAGE OverloadedStrings               #-}
 {-# LANGUAGE ScopedTypeVariables             #-}
 {-# LANGUAGE TypeOperators                   #-}
@@ -25,8 +26,8 @@ module Text.XML.Expat.Pickle.Generic
       IsXML      (..)
 
     -- * Functions
-    , encodeXML
-    , decodeXML
+    , toXML
+    , fromXML
 
     -- * Re-exported Data Types
     , PU         (..)
@@ -44,21 +45,27 @@ module Text.XML.Expat.Pickle.Generic
     , xpGenericString
 
     -- * Re-exported Combinators
+    , xpRoot
+    , xpContent
     , xpText0
     , xpText
-    , xpList0
-    , xpList
-    , xpContent
+--    , xpList
     , xpPrim
     , xpWrap
+    , xpOption
     ) where
 
 import           Data.ByteString       (ByteString)
 import           Data.Char             (isLower)
+import           Data.Either
+import           Data.Monoid
 import           Data.Text             (Text)
 import           GHC.Generics
 import qualified Text.XML.Expat.Pickle as Pickle
-import           Text.XML.Expat.Pickle hiding (xpPrim)
+import           Text.XML.Expat.Pickle hiding (xpList, xpPrim)
+import           Text.XML.Expat.Tree
+
+import System.IO.Unsafe
 
 --
 -- Class
@@ -75,11 +82,11 @@ class IsXML a where
 -- Functions
 --
 
-encodeXML :: IsXML a => a -> ByteString
-encodeXML = pickleXML' (xpRoot xmlPickler)
+toXML :: IsXML a => a -> ByteString
+toXML = pickleXML' (xpRoot xmlPickler)
 
-decodeXML :: IsXML a => ByteString -> Either String a
-decodeXML = unpickleXML' defaultParseOptions (xpRoot xmlPickler)
+fromXML :: IsXML a => ByteString -> Either String a
+fromXML = unpickleXML' defaultParseOptions (xpRoot xmlPickler)
 
 --
 -- Defining Picklers
@@ -113,28 +120,37 @@ instance IsXML a => GIsXML [UNode ByteString] (K1 i a) where
 instance GIsXML [t] U1 where
     gXMLPickler _ _ = (const U1, const ()) `xpWrap` xpUnit
 
-instance (GIsXML t f, GIsXML t g) => GIsXML t (f :+: g) where
+instance (GIsXML t a, GIsXML t b) => GIsXML t (a :+: b) where
     gXMLPickler opts f = gXMLPickler opts f `xpSum` gXMLPickler opts f
 
-instance (GIsXML [t] f, GIsXML [t] g) => GIsXML [t] (f :*: g) where
+instance (GIsXML [t] a, GIsXML [t] b) => GIsXML [t] (a :*: b) where
     gXMLPickler opts f = xpWrap
         (uncurry (:*:), \(a :*: b) -> (a, b))
         (gXMLPickler opts f `xpPair` gXMLPickler opts f)
 
-instance (Datatype d, GIsXML t f) => GIsXML t (M1 D d f) where
+instance (Datatype d, GIsXML t a) => GIsXML t (D1 d a) where
     gXMLPickler opts = xpWrap (M1, unM1) . gXMLPickler opts
 
-instance (Constructor c, GIsXML [UNode ByteString] f)
-         => GIsXML [UNode ByteString] (M1 C c f) where
+instance (Constructor c, GIsXML [UNode ByteString] a)
+         => GIsXML [UNode ByteString] (C1 c a) where
     gXMLPickler opts f = xpElemNodes
-        (gxFromString . xmlCtorModifier opts $ conName (undefined :: M1 C c f r))
+        (gxFromString . xmlCtorModifier opts $ conName (undefined :: M1 C c a r))
         ((M1, unM1) `xpWrap` gXMLPickler opts f)
 
-instance (Selector s, GIsXML [UNode ByteString] f)
-         => GIsXML [UNode ByteString] (M1 S s f) where
+instance (Selector s, GIsXML [UNode ByteString] a)
+         => GIsXML [UNode ByteString] (S1 s a) where
     gXMLPickler opts f = xpElemNodes
-        (gxFromString . xmlFieldModifier opts $ selName (undefined :: M1 S s f r))
+        (gxFromString . xmlFieldModifier opts $ selName (undefined :: M1 S s a r))
         ((M1, unM1) `xpWrap` gXMLPickler opts f)
+
+instance (Selector s, Show a, IsXML a)
+         => GIsXML [UNode ByteString] (S1 s (K1 i [a])) where
+    gXMLPickler opts _ =
+        ((M1 . K1, unK1 . unM1) `xpWrap` xpList0 (xpElemNodes name xmlPickler))
+      where
+        name = gxFromString
+            . xmlFieldModifier opts
+            $ selName (undefined :: t s (K1 i [a]) p)
 
 --
 -- Combinators
@@ -189,5 +205,5 @@ instance IsXML ByteString where
 instance IsXML a => IsXML (Maybe a) where
     xmlPickler = xpOption xmlPickler
 
-instance IsXML a => IsXML [a] where
-    xmlPickler = xpList0 xmlPickler
+instance (IsXML a, IsXML b) => IsXML (Either a b) where
+    xmlPickler = xmlPickler `xpEither` xmlPickler

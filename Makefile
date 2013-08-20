@@ -1,3 +1,5 @@
+.PHONY: test lint doc
+
 all: build
 
 build: .conf
@@ -12,11 +14,14 @@ clean:
 	-rm -rf .conf dist
 	cabal-dev clean
 
-doc:
-	cabal-dev haddock
+test:
+	rm -f .conf && cabal-dev install --enable-tests
 
 lint:
 	hlint src
 
+doc:
+	cabal-dev haddock
+
 .conf:
-	cabal-dev configure && touch .conf
+	cabal-dev configure && touch $@
