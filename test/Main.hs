@@ -27,20 +27,21 @@ import           Test.Framework
 import           Test.Framework.Providers.QuickCheck2
 import           Test.QuickCheck
 import           Text.XML.Expat.Pickle.Generic
+import System.IO.Unsafe
 
 main :: IO ()
 main = defaultMain
     [ testGroup "Isomorphisms"
-        [ testProperty "Flat"    (xml :: Iso Foo)
-        , testProperty "Nested"  (xml :: Iso Bar)
-        , testProperty "Maybe"   (xml :: Iso Baz)
-        , testProperty "Complex" (xml :: Iso Waldo)
-        , testProperty "List"    (xml :: Iso Wibble)
+        [ -- testProperty "Flat"    (xml :: Iso Foo)
+        testProperty "Nested"  (xml :: Iso Bar)
+        -- , testProperty "Maybe"   (xml :: Iso Baz)
+        -- , testProperty "Complex" (xml :: Iso Waldo)
+        -- , testProperty "List"    (xml :: Iso Wibble)
         ]
-    , testGroup "Generic Option Modifiers"
-        [ testProperty "Constructors" (xml :: Iso Fred)
-        , testProperty "Fields"       (xml :: Iso Plugh)
-        ]
+    -- , testGroup "Generic Option Modifiers"
+    --     [ testProperty "Constructors" (xml :: Iso Fred)
+    --     , testProperty "Fields"       (xml :: Iso Plugh)
+    --     ]
     ]
 
 data Foo = Foo
@@ -149,8 +150,12 @@ instance Show a => Show (Isomorphism a) where
 instance (Eq a, Arbitrary a, Show a, IsXML a) => Arbitrary (Isomorphism a) where
     arbitrary = do
         inp <- arbitrary
+
         let enc = toIndentedXML 2 inp
-        return . Iso inp enc $ fromXML enc
+
+        return . unsafePerformIO $ do
+            BS.putStrLn enc
+            return . Iso inp enc $ fromXML enc
 
 xml :: (Eq a, Arbitrary a, IsXML a) => Isomorphism a -> Bool
 xml (Iso d _ i) = either (const False) (== d) i

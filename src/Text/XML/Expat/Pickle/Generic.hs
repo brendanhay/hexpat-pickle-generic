@@ -69,6 +69,8 @@ import           GHC.Generics
 import           Text.XML.Expat.Format
 import           Text.XML.Expat.Tree   hiding (Node)
 
+import System.IO.Unsafe
+
 --
 -- Class
 --
@@ -78,7 +80,7 @@ type Node = UNode ByteString
 data XMLPU t a = XMLPU
     { pickleTree   :: a -> t
     , unpickleTree :: t -> Either String a
-    , root     :: Maybe ByteString
+    , root         :: Maybe ByteString
     }
 
 type PU = XMLPU
@@ -96,7 +98,9 @@ class IsXML a where
 toXML :: IsXML a => a -> ByteString
 toXML = format' . maybe head (\n -> Element n []) (root pu) . pickleTree pu
   where
-    pu = xmlPickler
+    pu = unsafePerformIO $ print (root pu') >> return pu'
+
+    pu' = xmlPickler
 
 toIndentedXML :: IsXML a => Int -> a -> ByteString
 toIndentedXML i = format'
@@ -104,8 +108,9 @@ toIndentedXML i = format'
     . maybe head (\n -> Element n []) (root pu)
     . pickleTree pu
   where
-    pu = xmlPickler
+    pu = unsafePerformIO $ print (root pu') >> return pu'
 
+    pu' = xmlPickler
 
 fromXML :: IsXML a => ByteString -> Either String a
 fromXML = either (Left . show) unwrap . parse' defaultParseOptions
@@ -114,9 +119,11 @@ fromXML = either (Left . show) unwrap . parse' defaultParseOptions
         Just x | x == n -> unpickleTree pu cs
         Just _          -> Left "Unexpected root element"
         Nothing         -> unpickleTree pu [e]
-    unwrap                  _ = Left "Unexpected root element"
+    unwrap _                  = Left "Unexpected root element"
 
-    pu = xmlPickler
+    pu = unsafePerformIO $ print (root pu') >> return pu'
+
+    pu' = xmlPickler
 
 --
 -- Defining Picklers
@@ -141,7 +148,6 @@ defaultXMLOptions = XMLOptions id (dropWhile isLower)
 genericXMLPickler opts =
     (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
 
-
 class GIsXML f where
     gXMLPickler :: XMLOptions -> PU [Node] a -> PU [Node] (f a)
 
@@ -151,13 +157,13 @@ instance IsXML a => GIsXML (K1 i a) where
 
 instance GIsXML U1 where
     -- Empty Constructors Parameters
-    gXMLPickler _ _ = (const U1, const ()) `xpWrap` xpLift ()
+    gXMLPickler _ _ = (const U1, const ()) `xpWrap` xpUnit
 
 instance GIsXML a => GIsXML (M1 i d a) where
     -- Discard Metadata
      gXMLPickler opts = xpWrap (M1, unM1) . gXMLPickler opts
 
-instance CtorIsXML a => GIsXML (C1 c a) where
+instance (Constructor c, CtorIsXML a) => GIsXML (C1 c a) where
     -- Constructor Encoding
     gXMLPickler opts = xpWrap (M1, unM1) . ctorXMLPickler opts
 
@@ -186,9 +192,12 @@ instance (SumIsXML a, SumIsXML b) => SumIsXML (a :+: b) where
     sumXMLPickler opts = sumXMLPickler opts `xpSum` sumXMLPickler opts
 
 instance Constructor c => SumIsXML (C1 c U1) where
-    sumXMLPickler opts = xpElem name $ XMLPU
-        { pickleTree   = const [Text name]
-        , unpickleTree = const . Right $ M1 U1
+    sumXMLPickler opts = xpContent $ XMLPU
+        { pickleTree   = const name
+        , unpickleTree = \t ->
+              if t == name
+                  then Right $ M1 U1
+                  else Left "Unable to read nullary ctor"
         , root         = Just name
         }
       where
@@ -296,7 +305,7 @@ xpEither pa pb = XMLPU
     , unpickleTree = \t -> case unpickleTree pa t of
           Right x -> Right . Left $ x
           Left  _ -> Right `fmap` unpickleTree pb t
-    , root     = listToMaybe $ catMaybes [root pa, root pb]
+    , root         = listToMaybe $ catMaybes [root pa, root pb]
     }
 
 xpPrim :: (Read a, Show a) => PU ByteString a
@@ -333,7 +342,7 @@ xpOption :: PU [n] a -> PU [n] (Maybe a)
 xpOption pu = XMLPU
     { pickleTree   = maybe [] (pickleTree pu)
     , unpickleTree = Right . either (const Nothing) Just . unpickleTree pu
-    , root     = root pu
+    , root         = root pu
     }
 
 xpPair :: PU [n] a -> PU [n] b -> PU [n] (a, b)
@@ -344,14 +353,14 @@ xpPair pa pb = XMLPU
               (Right a, Right b) -> Right (a, b)
               (Left e,  _)       -> Left $ "in 1st of pair, " ++ e
               (_,       Left e)  -> Left $ "in 2nd of pair, " ++ e
-    , root     = listToMaybe $ catMaybes [root pa, root pb]
+    , root         = listToMaybe $ catMaybes [root pa, root pb]
     }
 
 xpWrap :: (a -> b, b -> a) -> PU [n] a -> PU [n] b
 xpWrap (f, g) pu = XMLPU
     { pickleTree   = pickleTree pu . g
     , unpickleTree = fmap f . unpickleTree pu
-    , root     = root pu
+    , root         = root pu
     }
 
 xpUnit :: PU [n] ()
@@ -361,7 +370,7 @@ xpLift :: a -> PU [n] a
 xpLift a = XMLPU
     { pickleTree   = const []
     , unpickleTree = const $ Right a
-    , root     = Nothing
+    , root         = Nothing
     }
 
 xpText :: PU ByteString ByteString
@@ -377,7 +386,7 @@ xpContent pu = XMLPU
           let txt = pickleTree pu t
           in if gxNullString txt then [] else [Text txt]
     , unpickleTree = unpickleTree pu . mconcat . map extract
-    , root     = root pu
+    , root         = root pu
     }
   where
     extract (Element _ _ cs) = strip . mconcat $ map extract cs
@@ -393,7 +402,7 @@ xpContent pu = XMLPU
 
 xpList :: PU [Node] a -> PU [Node] [a]
 xpList pu = XMLPU
-    { pickleTree = mconcat . map (pickleTree pu)
+    { pickleTree   = mconcat . map (pickleTree pu)
     , unpickleTree = \t ->
             let munge [] = []
                 munge (elt@(Element _ _ _):es) =
@@ -410,7 +419,6 @@ xpList pu = XMLPU
                                 Right _ -> Right $ rights m
     , root = root pu
     }
-
 
 --
 -- Instances
