@@ -24,40 +24,40 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 
-module Text.XML.Expat.Pickle.Generic where
---     (
---     -- * Class
---       IsXML      (..)
+module Text.XML.Expat.Pickle.Generic
+    (
+    -- * Class
+      IsXML      (..)
 
---     -- * Functions
---     , toXML
---     , fromXML
+    -- * Functions
+    , toXML
+    , toIndentedXML
+    , fromXML
 
---     -- * Re-exported Data Types
---     , PU         (..)
+    -- * Data Types
+    , PU         (..)
 
---     -- * Options
---     , XMLOptions (..)
---     , defaultXMLOptions
+    -- * Options
+    , XMLOptions (..)
+    , defaultXMLOptions
 
---     -- * Generics
---     , genericXMLPickler
+    -- * Generics
+    , genericXMLPickler
 
---     -- * Combinators
---     , xpSum
---     , xpEither
---     , xpGenericString
-
---     -- * Re-exported Combinators
---     , xpRoot
---     , xpContent
---     , xpText0
---     , xpText
--- --    , xpList
---     , xpPrim
---     , xpWrap
---     , xpOption
---     ) where
+    -- * Combinators
+    , xpSum
+    , xpEither
+    , xpPrim
+    , xpElem
+    , xpOption
+    , xpPair
+    , xpWrap
+    , xpUnit
+    , xpLift
+    , xpText
+    , xpContent
+    , xpList
+    ) where
 
 import           Data.ByteString       (ByteString)
 import qualified Data.ByteString.Char8 as BS
