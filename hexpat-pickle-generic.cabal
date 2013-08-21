@@ -12,8 +12,7 @@ build-type:            Simple
 cabal-version:         >= 1.10
 
 description:
-    An IsXML class and GHC.Generics implementation for pickleable
-    data types using hexpat and hexpat-pickle.
+    An IsXML class and GHC.Generics implementation for pickleable data types using hexpat.
 
 extra-source-files:
     README.md
