@@ -35,7 +35,7 @@ module Text.XML.Expat.Pickle.Generic
     , fromXML
 
     -- * Data Types
-    , PU         (..)
+    , XMLPU      (..)
 
     -- * Options
     , XMLOptions (..)
@@ -75,11 +75,13 @@ import           Text.XML.Expat.Tree   hiding (Node)
 
 type Node = UNode ByteString
 
-data PU t a = PU
+data XMLPU t a = XMLPU
     { pickleTree   :: a -> t
     , unpickleTree :: t -> Either String a
     , root     :: Maybe ByteString
     }
+
+type PU = XMLPU
 
 class IsXML a where
     xmlPickler :: PU [Node] a
@@ -184,7 +186,7 @@ instance (SumIsXML a, SumIsXML b) => SumIsXML (a :+: b) where
     sumXMLPickler opts = sumXMLPickler opts `xpSum` sumXMLPickler opts
 
 instance Constructor c => SumIsXML (C1 c U1) where
-    sumXMLPickler opts = xpElem name $ PU
+    sumXMLPickler opts = xpElem name $ XMLPU
         { pickleTree   = const [Text name]
         , unpickleTree = const . Right $ M1 U1
         , root         = Just name
@@ -289,7 +291,7 @@ xpSum left right = (inp, out) `xpWrap` xpEither left right
     out (R1 x) = Right x
 
 xpEither :: PU [t] a -> PU [t] b -> PU [t] (Either a b)
-xpEither pa pb = PU
+xpEither pa pb = XMLPU
     { pickleTree   = either (pickleTree pa) (pickleTree pb)
     , unpickleTree = \t -> case unpickleTree pa t of
           Right x -> Right . Left $ x
@@ -298,7 +300,7 @@ xpEither pa pb = PU
     }
 
 xpPrim :: (Read a, Show a) => PU ByteString a
-xpPrim = PU
+xpPrim = XMLPU
     { pickleTree   = BS.pack . show
     , unpickleTree = \t ->
         let s = BS.unpack t
@@ -309,7 +311,7 @@ xpPrim = PU
     }
 
 xpElem :: ByteString -> PU [Node] a -> PU [Node] a
-xpElem name pu = PU
+xpElem name pu = XMLPU
     { pickleTree   = \x -> [Element name [] (pickleTree pu x)]
     , unpickleTree = \t ->
           let children = map matching t
@@ -328,14 +330,14 @@ xpElem name pu = PU
     tag = "<" ++ gxToString name ++ ">"
 
 xpOption :: PU [n] a -> PU [n] (Maybe a)
-xpOption pu = PU
+xpOption pu = XMLPU
     { pickleTree   = maybe [] (pickleTree pu)
     , unpickleTree = Right . either (const Nothing) Just . unpickleTree pu
     , root     = root pu
     }
 
 xpPair :: PU [n] a -> PU [n] b -> PU [n] (a, b)
-xpPair pa pb = PU
+xpPair pa pb = XMLPU
     { pickleTree   = \(a, b) -> pickleTree pa a ++ pickleTree pb b
     , unpickleTree = \t ->
           case (unpickleTree pa t, unpickleTree pb t) of
@@ -346,7 +348,7 @@ xpPair pa pb = PU
     }
 
 xpWrap :: (a -> b, b -> a) -> PU [n] a -> PU [n] b
-xpWrap (f, g) pu = PU
+xpWrap (f, g) pu = XMLPU
     { pickleTree   = pickleTree pu . g
     , unpickleTree = fmap f . unpickleTree pu
     , root     = root pu
@@ -356,21 +358,21 @@ xpUnit :: PU [n] ()
 xpUnit = xpLift ()
 
 xpLift :: a -> PU [n] a
-xpLift a = PU
+xpLift a = XMLPU
     { pickleTree   = const []
     , unpickleTree = const $ Right a
     , root     = Nothing
     }
 
 xpText :: PU ByteString ByteString
-xpText = PU
+xpText = XMLPU
     { pickleTree   = id
     , unpickleTree = Right
     , root         = Nothing
     }
 
 xpContent :: PU ByteString a -> PU [Node] a
-xpContent pu = PU
+xpContent pu = XMLPU
     { pickleTree   = \t ->
           let txt = pickleTree pu t
           in if gxNullString txt then [] else [Text txt]
@@ -390,7 +392,7 @@ xpContent pu = PU
         | otherwise = True
 
 xpList :: PU [Node] a -> PU [Node] [a]
-xpList pu = PU
+xpList pu = XMLPU
     { pickleTree = mconcat . map (pickleTree pu)
     , unpickleTree = \t ->
             let munge [] = []
