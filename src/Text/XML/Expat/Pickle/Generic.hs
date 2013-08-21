@@ -305,7 +305,7 @@ xpEither pa pb = XMLPU
     , unpickleTree = \t -> case unpickleTree pa t of
           Right x -> Right . Left $ x
           Left  _ -> Right `fmap` unpickleTree pb t
-    , root         = listToMaybe $ catMaybes [root pa, root pb]
+    , root         = Nothing -- listToMaybe $ catMaybes [root pa, root pb]
     }
 
 xpPrim :: (Read a, Show a) => PU ByteString a
