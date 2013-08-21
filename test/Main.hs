@@ -26,7 +26,6 @@ import           GHC.Generics
 import           Test.Framework
 import           Test.Framework.Providers.QuickCheck2
 import           Test.QuickCheck
-import           Text.XML.Expat.Format
 import           Text.XML.Expat.Pickle.Generic
 
 main :: IO ()
@@ -121,11 +120,11 @@ instance Arbitrary Plugh where
     arbitrary = Plugh <$> arbitrary <*> arbitrary
 
 instance Arbitrary ByteString where
-    arbitrary = fromString <$> listOf1 (oneof
+    arbitrary = fmap fromString . listOf1 $ oneof
         [ choose ('\48', '\57')
         , choose ('\65', '\90')
         , choose ('\97', '\122')
-        ])
+        ]
 
 type Iso a = Isomorphism a -> Bool
 
@@ -147,10 +146,10 @@ instance Show a => Show (Isomorphism a) where
         , show identity
         ]
 
-instance (Eq a, Arbitrary a, IsXML a) => Arbitrary (Isomorphism a) where
+instance (Eq a, Arbitrary a, Show a, IsXML a) => Arbitrary (Isomorphism a) where
     arbitrary = do
         inp <- arbitrary
-        let enc = format' . indent 2 $ pickleTree (xpRoot xmlPickler) inp
+        let enc = toIndentedXML 2 inp
         return . Iso inp enc $ fromXML enc
 
 xml :: (Eq a, Arbitrary a, IsXML a) => Isomorphism a -> Bool

@@ -6,8 +6,12 @@
 
 
 data Foo = Foo { fooList :: [Int] } deriving (Show, Generic)
+data Bar = Bar { barFoo :: Foo } deriving (Show, Generic)
 
 instance IsXML Foo
+instance IsXML Bar
 
 let foo = Foo [2,1]
+let bar = Bar foo
+
 let bs  = "<Foo><List>2</List><List>1</List></Foo>" :: ByteString
