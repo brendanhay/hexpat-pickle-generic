@@ -110,7 +110,6 @@ toIndentedXML i = format'
   where
     pu = xmlPickler
 
-
 fromXML :: IsXML a => ByteString -> Either String a
 fromXML = either (Left . show) unwrap . parse' defaultParseOptions
   where
