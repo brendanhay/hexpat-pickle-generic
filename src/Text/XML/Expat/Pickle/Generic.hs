@@ -1,4 +1,5 @@
 {-# LANGUAGE DefaultSignatures               #-}
+{-# LANGUAGE DefaultSignatures               #-}
 {-# LANGUAGE DeriveGeneric                   #-}
 {-# LANGUAGE FlexibleContexts                #-}
 {-# LANGUAGE FlexibleInstances               #-}
@@ -45,18 +46,21 @@ module Text.XML.Expat.Pickle.Generic
     , genericXMLPickler
 
     -- * Combinators
+    , xpWrap
+    , xpList
+    , xpElemList
+    , xpElem
     , xpSum
     , xpEither
     , xpPrim
-    , xpElem
+    , xpEmpty
     , xpOption
     , xpPair
-    , xpWrap
     , xpUnit
     , xpLift
     , xpText
+    , xpText0
     , xpContent
-    , xpList
     ) where
 
 import           Data.ByteString       (ByteString)
@@ -69,8 +73,6 @@ import           GHC.Generics
 import           Text.XML.Expat.Format
 import           Text.XML.Expat.Tree   hiding (Node)
 
-import System.IO.Unsafe
-
 --
 -- Class
 --
@@ -80,7 +82,7 @@ type Node = UNode ByteString
 data XMLPU t a = XMLPU
     { pickleTree   :: a -> t
     , unpickleTree :: t -> Either String a
-    , root         :: Maybe ByteString
+    , root     :: Maybe ByteString
     }
 
 type PU = XMLPU
@@ -98,9 +100,7 @@ class IsXML a where
 toXML :: IsXML a => a -> ByteString
 toXML = format' . maybe head (\n -> Element n []) (root pu) . pickleTree pu
   where
-    pu = unsafePerformIO $ print (root pu') >> return pu'
-
-    pu' = xmlPickler
+    pu = xmlPickler
 
 toIndentedXML :: IsXML a => Int -> a -> ByteString
 toIndentedXML i = format'
@@ -108,9 +108,8 @@ toIndentedXML i = format'
     . maybe head (\n -> Element n []) (root pu)
     . pickleTree pu
   where
-    pu = unsafePerformIO $ print (root pu') >> return pu'
+    pu = xmlPickler
 
-    pu' = xmlPickler
 
 fromXML :: IsXML a => ByteString -> Either String a
 fromXML = either (Left . show) unwrap . parse' defaultParseOptions
@@ -119,27 +118,27 @@ fromXML = either (Left . show) unwrap . parse' defaultParseOptions
         Just x | x == n -> unpickleTree pu cs
         Just _          -> Left "Unexpected root element"
         Nothing         -> unpickleTree pu [e]
-    unwrap _                  = Left "Unexpected root element"
+    unwrap                  _ = Left "Unexpected root element"
 
-    pu = unsafePerformIO $ print (root pu') >> return pu'
-
-    pu' = xmlPickler
+    pu = xmlPickler
 
 --
 -- Defining Picklers
 --
 
 data XMLOptions = XMLOptions
-    { xmlCtorModifier  :: String -> String
+    { xmlCtorModifier  :: String -> ByteString
       -- ^ Function applied to constructor tags.
-    , xmlFieldModifier :: String -> String
+    , xmlFieldModifier :: String -> ByteString
       -- ^ Function applied to record field labels.
+    , xmlListElement   :: ByteString
+      -- ^ Default element name to wrap list items with.
     }
 
 type Options = XMLOptions
 
 defaultXMLOptions :: Options
-defaultXMLOptions = XMLOptions id (dropWhile isLower)
+defaultXMLOptions = XMLOptions BS.pack (BS.pack . dropWhile isLower) "Value"
 
 --
 -- Generics
@@ -149,146 +148,87 @@ genericXMLPickler opts =
     (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
 
 class GIsXML f where
-    gXMLPickler :: XMLOptions -> PU [Node] a -> PU [Node] (f a)
+    gXMLPickler :: Options -> PU [Node] a -> PU [Node] (f a)
 
 instance IsXML a => GIsXML (K1 i a) where
-    -- Constants
     gXMLPickler _ _ = (K1, unK1) `xpWrap` xmlPickler
 
-instance GIsXML U1 where
-    -- Empty Constructors Parameters
-    gXMLPickler _ _ = (const U1, const ()) `xpWrap` xpUnit
+instance (GIsXML a, GIsXML b) => GIsXML (a :+: b) where
+    gXMLPickler opts f = gXMLPickler opts f `xpSum` gXMLPickler opts f
 
-instance GIsXML a => GIsXML (M1 i d a) where
-    -- Discard Metadata
-     gXMLPickler opts = xpWrap (M1, unM1) . gXMLPickler opts
-
-instance (Constructor c, CtorIsXML a) => GIsXML (C1 c a) where
-    -- Constructor Encoding
-    gXMLPickler opts = xpWrap (M1, unM1) . ctorXMLPickler opts
-
-instance ( AllNullary (a :+: b) allNullary
-         , NullIsXML  (a :+: b) allNullary
-         ) => GIsXML  (a :+: b) where
-    -- Nullary Constructors
-    gXMLPickler opts =
-        (unTagged :: Tagged allNullary (PU t ((a :+: b) d)) -> (PU t ((a :+: b) d)))
-            . nullXMLPickler opts
-
---
--- Nullary
---
-
-class NullIsXML f allNullary where
-    nullXMLPickler :: XMLOptions -> PU [Node] a -> Tagged allNullary (PU [Node] (f a))
-
-instance SumIsXML (a :+: b) => NullIsXML (a :+: b) True where
-    nullXMLPickler opts _ = Tagged $ sumXMLPickler opts
-
-class SumIsXML f where
-    sumXMLPickler :: XMLOptions -> PU [Node] (f a)
-
-instance (SumIsXML a, SumIsXML b) => SumIsXML (a :+: b) where
-    sumXMLPickler opts = sumXMLPickler opts `xpSum` sumXMLPickler opts
-
-instance Constructor c => SumIsXML (C1 c U1) where
-    sumXMLPickler opts = xpContent $ XMLPU
-        { pickleTree   = const name
-        , unpickleTree = \t ->
-              if t == name
-                  then Right $ M1 U1
-                  else Left "Unable to read nullary ctor"
-        , root         = Just name
-        }
-      where
-        name = BS.pack . xmlCtorModifier opts $ conName (undefined :: t c U1 p)
-
---
--- Records
---
-
-class CtorIsXML f where
-    ctorXMLPickler :: XMLOptions -> PU [Node] a -> PU [Node] (f a)
-
-class CtorIsXML' f isRecord where
-    ctorXMLPickler' :: XMLOptions -> PU [Node] a -> Tagged isRecord (PU [Node] (f a))
-
-instance (IsRecord f isRecord, CtorIsXML' f isRecord) => CtorIsXML f where
-    ctorXMLPickler opts = (unTagged :: Tagged isRecord (PU t (f a)) -> PU t (f a))
-        . ctorXMLPickler' opts
-
-instance RecIsXML f => CtorIsXML' f True where
-    ctorXMLPickler' opts = Tagged . recXMLPickler opts
-
-instance GIsXML f => CtorIsXML' f False where
-    ctorXMLPickler' opts = Tagged . gXMLPickler opts
-
-class RecIsXML f where
-    recXMLPickler :: XMLOptions -> PU [Node] a -> PU [Node] (f a)
-
-instance (RecIsXML a, RecIsXML b) => RecIsXML (a :*: b) where
-    recXMLPickler opts f = xpWrap
+instance (GIsXML a, GIsXML b) => GIsXML (a :*: b) where
+    gXMLPickler opts f = xpWrap
         (uncurry (:*:), \(a :*: b) -> (a, b))
-        (recXMLPickler opts f `xpPair` recXMLPickler opts f)
+        (gXMLPickler opts f `xpPair` gXMLPickler opts f)
 
-instance (Selector s, GIsXML a) => RecIsXML (S1 s a) where
-    recXMLPickler opts f = xpElem
-        (BS.pack . xmlFieldModifier opts $ selName (undefined :: S1 s a r))
+instance (Datatype d, GIsXML a) => GIsXML (D1 d a) where
+    gXMLPickler opts = xpWrap (M1, unM1) . gXMLPickler opts
+
+instance (Constructor c, GIsXML a) => GIsXML (C1 c a) where
+    gXMLPickler opts f = (xpWrap (M1, unM1) $ gXMLPickler opts f)
+        { root = Just . xmlCtorModifier opts $ conName (undefined :: C1 c a p)
+        }
+
+instance (Selector s, GIsXML a) => GIsXML (S1 s a) where
+    gXMLPickler opts f = xpElem
+        (xmlFieldModifier opts $ selName (undefined :: S1 s a p))
         ((M1, unM1) `xpWrap` gXMLPickler opts f)
 
-instance (Selector s, IsXML a) => RecIsXML (S1 s (K1 i (Maybe a))) where
-    recXMLPickler opts _ =
-        (M1 . K1, unK1 . unM1) `xpWrap` xpOption (xpElem name xmlPickler)
+instance (Selector s, IsXML a) => GIsXML (S1 s (K1 i [a])) where
+    gXMLPickler opts _ = xpElem
+        (xmlFieldModifier opts $ selName (undefined :: t s (K1 i [a]) p))
+        ((M1 . K1, unK1 . unM1) `xpWrap` xpList (xpElem key pu))
       where
-        name = BS.pack . xmlFieldModifier opts
-            $ selName (undefined :: t s (K1 i (Maybe a)) p)
-
-instance (Selector s, IsXML a) => RecIsXML (S1 s (K1 i [a])) where
-    recXMLPickler opts _ =
-        ((M1 . K1, unK1 . unM1) `xpWrap` xpList (xpElem name xmlPickler))
-      where
-        name = BS.pack . xmlFieldModifier opts
-            $ selName (undefined :: t s (K1 i [a]) p)
-
-
---
--- Tagging
---
-
-class IsRecord (f :: * -> *) isRecord | f -> isRecord
-
-instance (IsRecord f isRecord) => IsRecord (f :*: g) isRecord
-instance IsRecord (M1 S NoSelector f) False
-instance (IsRecord f isRecord) => IsRecord (M1 S c f) isRecord
-instance IsRecord (K1 i c) True
-instance IsRecord U1 False
-
-class AllNullary (f :: * -> *) allNullary | f -> allNullary
-
-instance ( AllNullary a allNullaryL
-         , AllNullary b allNullaryR
-         , And allNullaryL allNullaryR allNullary
-         ) => AllNullary (a :+: b) allNullary
-instance AllNullary a allNullary => AllNullary (M1 i c a) allNullary
-instance AllNullary (a :*: b) False
-instance AllNullary (K1 i c) False
-instance AllNullary U1 True
-
-data True
-data False
-
-class And bool1 bool2 bool3 | bool1 bool2 -> bool3
-
-instance And True  True  True
-instance And False False False
-instance And False True  False
-instance And True  False False
-
-newtype Tagged s b = Tagged { unTagged :: b }
+        key = fromMaybe (xmlListElement opts) $ root pu
+        pu  = xmlPickler
 
 --
 -- Combinators
 --
+
+xpWrap :: (a -> b, b -> a) -> PU [n] a -> PU [n] b
+xpWrap (f, g) pu = XMLPU
+    { pickleTree   = pickleTree pu . g
+    , unpickleTree = fmap f . unpickleTree pu
+    , root         = root pu
+    }
+
+xpElemList :: ByteString -> PU [Node] a -> PU [Node] [a]
+xpElemList name = xpList . xpElem name
+
+xpList :: PU [Node] a -> PU [Node] [a]
+xpList pu = XMLPU
+    { pickleTree   = concatMap (pickleTree pu)
+    , unpickleTree = concatEithers . unpickle
+    , root         = root pu
+    }
+  where
+    unpickle (e@(Element _ _ _):es) = unpickleTree pu [e] : unpickle es
+    unpickle (_:es)                 = unpickle es
+    unpickle []                     = []
+
+    concatEithers xs = case partitionEithers xs of
+        ([], rs) -> Right rs
+        (l:_, _) -> Left l
+
+xpElem :: ByteString -> PU [Node] a -> PU [Node] a
+xpElem name pu = XMLPU
+    { pickleTree   = \x -> [Element name [] (pickleTree pu x)]
+    , unpickleTree = \t ->
+          let children = map matching t
+          in case catMaybes children of
+                 []    -> Left $ "can't find " ++ tag
+                 (x:_) -> case x of
+                     Left e -> Left $ "in " ++ tag ++ ", " ++ e
+                     r      -> r
+    , root = Just name
+    }
+  where
+    matching (Element n _ cs)
+        | n == name = Just $ unpickleTree pu cs
+    matching _      = Nothing
+
+    tag = "<" ++ gxToString name ++ ">"
 
 xpSum :: PU [t] (f r) -> PU [t] (g r) -> PU [t] ((f :+: g) r)
 xpSum left right = (inp, out) `xpWrap` xpEither left right
@@ -305,7 +245,7 @@ xpEither pa pb = XMLPU
     , unpickleTree = \t -> case unpickleTree pa t of
           Right x -> Right . Left $ x
           Left  _ -> Right `fmap` unpickleTree pb t
-    , root         = Nothing
+    , root     = listToMaybe $ catMaybes [root pa, root pb]
     }
 
 xpPrim :: (Read a, Show a) => PU ByteString a
@@ -319,30 +259,23 @@ xpPrim = XMLPU
     , root         = Nothing
     }
 
-xpElem :: ByteString -> PU [Node] a -> PU [Node] a
-xpElem name pu = XMLPU
-    { pickleTree   = \x -> [Element name [] (pickleTree pu x)]
-    , unpickleTree = \t ->
-          let children = map matching t
-          in case catMaybes children of
-                 []    -> Left $ "can't find " ++ tag
-                 (x:_) -> case x of
-                     Left e -> Left $ "in " ++ tag ++ ", " ++ e
-                     r      -> r
-    , root         = Nothing
+xpEmpty :: (Read a, Show a) => PU [Node] a
+xpEmpty = XMLPU
+    { pickleTree   = \x -> [Element (BS.pack $ show x) [] []]
+    , unpickleTree = \t -> case t of
+          [(Element n [] [])] -> let s = BS.unpack n
+                                 in case reads s of
+              [(x, "")] -> Right x
+              _         -> Left $ "failed to read text: " ++ s
+          _ -> Left "Expected empty element"
+    , root        = Nothing
     }
-  where
-    matching (Element n _ cs)
-        | n == name = Just $ unpickleTree pu cs
-    matching _      = Nothing
-
-    tag = "<" ++ gxToString name ++ ">"
 
 xpOption :: PU [n] a -> PU [n] (Maybe a)
 xpOption pu = XMLPU
     { pickleTree   = maybe [] (pickleTree pu)
     , unpickleTree = Right . either (const Nothing) Just . unpickleTree pu
-    , root         = root pu
+    , root     = root pu
     }
 
 xpPair :: PU [n] a -> PU [n] b -> PU [n] (a, b)
@@ -353,14 +286,7 @@ xpPair pa pb = XMLPU
               (Right a, Right b) -> Right (a, b)
               (Left e,  _)       -> Left $ "in 1st of pair, " ++ e
               (_,       Left e)  -> Left $ "in 2nd of pair, " ++ e
-    , root         = listToMaybe $ catMaybes [root pa, root pb]
-    }
-
-xpWrap :: (a -> b, b -> a) -> PU [n] a -> PU [n] b
-xpWrap (f, g) pu = XMLPU
-    { pickleTree   = pickleTree pu . g
-    , unpickleTree = fmap f . unpickleTree pu
-    , root         = root pu
+    , root     = listToMaybe $ catMaybes [root pa, root pb]
     }
 
 xpUnit :: PU [n] ()
@@ -370,11 +296,18 @@ xpLift :: a -> PU [n] a
 xpLift a = XMLPU
     { pickleTree   = const []
     , unpickleTree = const $ Right a
-    , root         = Nothing
+    , root     = Nothing
     }
 
 xpText :: PU ByteString ByteString
 xpText = XMLPU
+    { pickleTree   = id
+    , unpickleTree = \t -> if BS.null t then Left "empty text" else Right t
+    , root         = Nothing
+    }
+
+xpText0 :: PU ByteString ByteString
+xpText0 = XMLPU
     { pickleTree   = id
     , unpickleTree = Right
     , root         = Nothing
@@ -386,7 +319,7 @@ xpContent pu = XMLPU
           let txt = pickleTree pu t
           in if gxNullString txt then [] else [Text txt]
     , unpickleTree = unpickleTree pu . mconcat . map extract
-    , root         = root pu
+    , root     = root pu
     }
   where
     extract (Element _ _ cs) = strip . mconcat $ map extract cs
@@ -399,26 +332,6 @@ xpContent pu = XMLPU
         | c == '\r' = False
         | c == '\n' = False
         | otherwise = True
-
-xpList :: PU [Node] a -> PU [Node] [a]
-xpList pu = XMLPU
-    { pickleTree   = mconcat . map (pickleTree pu)
-    , unpickleTree = \t ->
-            let munge [] = []
-                munge (elt@(Element _ _ _):es) =
-                    case unpickleTree pu [elt] of
-                        Right val -> Right val:munge es
-                        Left err  -> [Left $ "in list, "++err]
-                munge (_:es) = munge es  -- ignore text nodes
-                m = munge t
-            in  case m of
-                    [] -> Right []
-                    _  ->
-                        case last m of
-                                Left err -> Left err
-                                Right _ -> Right $ rights m
-    , root = root pu
-    }
 
 --
 -- Instances

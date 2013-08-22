@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric             #-}
+{-# LANGUAGE OverloadedStrings         #-}
 {-# LANGUAGE RecordWildCards           #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans      #-}
@@ -27,98 +28,111 @@ import           Test.Framework
 import           Test.Framework.Providers.QuickCheck2
 import           Test.QuickCheck
 import           Text.XML.Expat.Pickle.Generic
-import System.IO.Unsafe
 
 main :: IO ()
 main = defaultMain
     [ testGroup "Isomorphisms"
-        [ -- testProperty "Flat"    (xml :: Iso Foo)
-        testProperty "Nested"  (xml :: Iso Bar)
-        -- , testProperty "Maybe"   (xml :: Iso Baz)
-        -- , testProperty "Complex" (xml :: Iso Waldo)
-        -- , testProperty "List"    (xml :: Iso Wibble)
+        [ testProperty "Flat"    (xml :: Iso Flat)
+        , testProperty "Nested"  (xml :: Iso Nested)
+        , testProperty "Maybe"   (xml :: Iso MaybeRec)
+        , testProperty "Complex" (xml :: Iso Complex)
+        , testProperty "List"    (xml :: Iso ListRec)
+        , testProperty "Nullary" (xml :: Iso Nullary)
         ]
-    -- , testGroup "Generic Option Modifiers"
-    --     [ testProperty "Constructors" (xml :: Iso Fred)
-    --     , testProperty "Fields"       (xml :: Iso Plugh)
-    --     ]
+    , testGroup "Generic Option Modifiers"
+        [ testProperty "Constructors" (xml :: Iso Ctors)
+        , testProperty "Fields"       (xml :: Iso Fields)
+        ]
     ]
 
-data Foo = Foo
+data Flat = Flat
     { fooInt        :: Int
     , fooByteString :: ByteString
     } deriving (Eq, Show, Generic)
 
-instance IsXML Foo
+instance IsXML Flat
 
-instance Arbitrary Foo where
-    arbitrary = Foo <$> arbitrary <*> arbitrary
+instance Arbitrary Flat where
+    arbitrary = Flat <$> arbitrary <*> arbitrary
 
-data Bar = Bar
+data Nested = Nested
     { barInt     :: Int
     , barInteger :: Integer
-    , barFoo     :: Foo
+    , barFlat     :: Flat
     } deriving (Eq, Show, Generic)
 
-instance IsXML Bar
+instance IsXML Nested
 
-instance Arbitrary Bar where
-    arbitrary = Bar <$> arbitrary <*> arbitrary <*> arbitrary
+instance Arbitrary Nested where
+    arbitrary = Nested <$> arbitrary <*> arbitrary <*> arbitrary
 
-data Baz = Baz
-    { bazFoo :: Maybe Foo
+data MaybeRec = MaybeRec
+    { bazFlat :: Maybe Flat
     , bazInt :: Int
     } deriving (Eq, Show, Generic)
 
-instance IsXML Baz
+instance IsXML MaybeRec
 
-instance Arbitrary Baz where
-    arbitrary = Baz <$> arbitrary <*> arbitrary
+instance Arbitrary MaybeRec where
+    arbitrary = MaybeRec <$> arbitrary <*> arbitrary
 
-data Waldo = Waldo
-    { waldoBaz   :: Baz
-    , waldoMaybe :: Maybe Foo
+data Complex = Complex
+    { waldoMaybeRec   :: MaybeRec
+    , waldoMaybe :: Maybe Flat
     } deriving (Eq, Show, Generic)
 
-instance IsXML Waldo
+instance IsXML Complex
 
-instance Arbitrary Waldo where
-    arbitrary = Waldo
+instance Arbitrary Complex where
+    arbitrary = Complex
         <$> arbitrary
         <*> arbitrary
 
-data Wibble = Wibble
-    { wibList :: [Int]
+data ListRec = ListRec
+    { wibList :: [Flat]
     } deriving (Eq, Show, Generic)
 
-instance IsXML Wibble
+instance IsXML ListRec
 
-instance Arbitrary Wibble where
-    arbitrary = Wibble <$> arbitrary
+instance Arbitrary ListRec where
+    arbitrary = ListRec <$> arbitrary
 
-data Fred = PrefixXyzzy | PrefixThud
-    deriving (Eq, Show, Generic)
+data Nullary = PrefixXyzzy | PrefixThud
+    deriving (Eq, Read, Show, Generic)
 
-instance IsXML Fred where
-    xmlPickler = genericXMLPickler $ defaultXMLOptions
-        { xmlCtorModifier = \s -> fromMaybe s $ stripPrefix "Prefix" s
+instance IsXML Nullary where
+    xmlPickler = (xpContent xpPrim)
+        { root = Just "Nullary"
         }
 
-instance Arbitrary Fred where
+instance Arbitrary Nullary where
     arbitrary = elements [PrefixXyzzy, PrefixThud]
 
-data Plugh = Plugh
+data Fields = Fields
     { thisPrefixInt :: Int
-    , thisPrefixFoo :: Foo
+    , thisPrefixFlat :: Flat
     } deriving (Eq, Show, Generic)
 
-instance IsXML Plugh where
+instance IsXML Fields where
     xmlPickler = genericXMLPickler $ defaultXMLOptions
         { xmlFieldModifier = reverse
         }
 
-instance Arbitrary Plugh where
-    arbitrary = Plugh <$> arbitrary <*> arbitrary
+instance Arbitrary Fields where
+    arbitrary = Fields <$> arbitrary <*> arbitrary
+
+data Ctors = PrefixCtors
+    { ctorInt  :: Int
+    , ctorFlat :: Flat
+    } deriving (Eq, Show, Generic)
+
+instance IsXML Ctors where
+    xmlPickler = genericXMLPickler $ defaultXMLOptions
+        { xmlCtorModifier = \s -> fromMaybe s $ stripPrefix "Prefix" s
+        }
+
+instance Arbitrary Ctors where
+    arbitrary = PrefixCtors <$> arbitrary <*> arbitrary
 
 instance Arbitrary ByteString where
     arbitrary = fmap fromString . listOf1 $ oneof
@@ -150,12 +164,8 @@ instance Show a => Show (Isomorphism a) where
 instance (Eq a, Arbitrary a, Show a, IsXML a) => Arbitrary (Isomorphism a) where
     arbitrary = do
         inp <- arbitrary
-
         let enc = toIndentedXML 2 inp
-
-        return . unsafePerformIO $ do
-            BS.putStrLn enc
-            return . Iso inp enc $ fromXML enc
+        return . Iso inp enc $ fromXML enc
 
 xml :: (Eq a, Arbitrary a, IsXML a) => Isomorphism a -> Bool
 xml (Iso d _ i) = either (const False) (== d) i

@@ -1,17 +1,23 @@
 :set -isrc
 :set -XDeriveGeneric
+:set -XFlexibleInstances
 :set -XOverloadedStrings
 
 :load Text.XML.Expat.Pickle.Generic
 
+import qualified Data.ByteString.Char8 as BS
 
-data Foo = Foo { fooList :: [Int] } deriving (Show, Generic)
-data Bar = Bar { barFoo :: Foo } deriving (Show, Generic)
+data Foo = Foo { fooName :: BS.ByteString, fooInts :: [Int] } deriving (Show, Generic)
+data Bar = Bar { barFoos :: [Foo] } deriving (Show, Generic)
+
+-- instance IsXML [Int] where xmlPickler = xpElemList "Int" xmlPickler
 
 instance IsXML Foo
+
+-- instance IsXML [Foo] where xmlPickler = xpElemList "Foo" xmlPickler
+
 instance IsXML Bar
 
-let foo = Foo [2,1]
-let bar = Bar foo
-
-let bs  = "<Foo><List>2</List><List>1</List></Foo>" :: ByteString
+let foo = Foo "this-is-foo" [2,1]
+let bar = Bar [foo, foo]
+let bs  = "<Bar><Foos><Foo><Name>a</Name><Ints><Int>1</Int></Ints></Foo><Foo><Name>b</Name><Ints><Int>4</Int></Ints></Foo></Foos></Bar>" :: ByteString
