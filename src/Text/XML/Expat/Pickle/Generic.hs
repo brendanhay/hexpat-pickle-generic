@@ -44,6 +44,7 @@ module Text.XML.Expat.Pickle.Generic
 
     -- * Generics
     , genericXMLPickler
+    , rootXMLPickler
 
     -- * Combinators
     , xpWrap
@@ -122,7 +123,7 @@ fromXML = either (Left . show) unwrap . parse' defaultParseOptions
     pu = xmlPickler
 
 --
--- Defining Picklers
+-- Options
 --
 
 data XMLOptions = XMLOptions
@@ -145,6 +146,9 @@ defaultXMLOptions = XMLOptions BS.pack (BS.pack . dropWhile isLower) "Value"
 
 genericXMLPickler opts =
     (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
+
+rootXMLPickler name =
+    (genericXMLPickler defaultXMLOptions) { root = Just name }
 
 class GIsXML f where
     gXMLPickler :: Options -> PU [Node] a -> PU [Node] (f a)
