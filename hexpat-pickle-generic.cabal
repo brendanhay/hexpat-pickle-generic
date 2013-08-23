@@ -1,5 +1,5 @@
 name:                  hexpat-pickle-generic
-version:               0.1.4
+version:               0.1.5
 synopsis:              Picklers for de/serialising Generic data types to and from XML
 license:               BSD3
 license-file:          LICENSE
