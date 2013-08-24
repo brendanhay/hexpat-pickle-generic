@@ -44,7 +44,6 @@ module Text.XML.Expat.Pickle.Generic
 
     -- * Generics
     , genericXMLPickler
-    , rootXMLPickler
 
     -- * Combinators
     , xpWrap
@@ -115,12 +114,14 @@ fromXML :: IsXML a => ByteString -> Either String a
 fromXML = either (Left . show) unwrap . parse' defaultParseOptions
   where
     unwrap e@(Element n _ cs) = case root pu of
-        Just x | x == n -> unpickleTree pu cs
-        Just _          -> Left "Unexpected root element"
-        Nothing         -> unpickleTree pu [e]
-    unwrap                  _ = Left "Unexpected root element"
+        Just x | strip x == n -> unpickleTree pu cs
+               | otherwise    -> Left $
+            "expected root: " ++ show x ++ ", got: " ++ show n
+        Nothing -> unpickleTree pu [e]
+    unwrap t = Left $ "unexpected root: " ++ show t
 
-    pu = xmlPickler
+    pu    = xmlPickler
+    strip = fst . BS.breakSubstring " xmlns="
 
 --
 -- Options
@@ -146,9 +147,6 @@ defaultXMLOptions = XMLOptions BS.pack (BS.pack . dropWhile isLower) "Value"
 
 genericXMLPickler opts =
     (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
-
-rootXMLPickler name =
-    (genericXMLPickler defaultXMLOptions) { root = Just name }
 
 class GIsXML f where
     gXMLPickler :: Options -> PU [Node] a -> PU [Node] (f a)
