@@ -264,9 +264,8 @@ xpEmpty :: (Read a, Show a) => PU [Node] a
 xpEmpty = XMLPU
     { pickleTree   = \x -> [Element (BS.pack $ show x) [] []]
     , unpickleTree = \t -> case t of
-          [(Element n [] _)] -> let s = BS.unpack n in case reads s of
+          [(Element n _ _)] -> let s = BS.unpack n in case reads s of
               [(x, "")] -> Right x
-              _         -> Left $ "failed to read text: " ++ s
           t -> Left $ "expected empty element, got: " ++ show t
     , root        = Nothing
     }
