@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances               #-}
 {-# LANGUAGE MultiParamTypeClasses           #-}
 {-# LANGUAGE Rank2Types                      #-}
+{-# LANGUAGE OverlappingInstances            #-}
 {-# LANGUAGE OverloadedStrings               #-}
 {-# LANGUAGE ScopedTypeVariables             #-}
 {-# LANGUAGE TypeOperators                   #-}
@@ -141,7 +142,7 @@ defaultXMLOptions = XMLOptions BS.pack (BS.pack . dropWhile isLower) "Value"
 -- Generics
 --
 
-type XMLGeneric = forall a. (Generic a, GIsXML (Rep a)) => Options -> PU [Node] a
+type XMLGeneric a = (Generic a, GIsXML (Rep a)) => Options -> PU [Node] a
 
 genericXMLPickler opts =
     (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
