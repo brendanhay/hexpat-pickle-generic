@@ -1,17 +1,12 @@
 {-# LANGUAGE DefaultSignatures               #-}
-{-# LANGUAGE DefaultSignatures               #-}
 {-# LANGUAGE DeriveGeneric                   #-}
 {-# LANGUAGE FlexibleContexts                #-}
 {-# LANGUAGE FlexibleInstances               #-}
-{-# LANGUAGE FunctionalDependencies          #-}
-{-# LANGUAGE KindSignatures                  #-}
 {-# LANGUAGE MultiParamTypeClasses           #-}
-{-# LANGUAGE OverlappingInstances            #-}
+{-# LANGUAGE Rank2Types                      #-}
 {-# LANGUAGE OverloadedStrings               #-}
 {-# LANGUAGE ScopedTypeVariables             #-}
 {-# LANGUAGE TypeOperators                   #-}
-{-# LANGUAGE UndecidableInstances            #-}
-{-# LANGUAGE ViewPatterns                    #-}
 
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 
@@ -43,6 +38,7 @@ module Text.XML.Expat.Pickle.Generic
     , defaultXMLOptions
 
     -- * Generics
+    , XMLGeneric
     , genericXMLPickler
 
     -- * Combinators
@@ -144,6 +140,8 @@ defaultXMLOptions = XMLOptions BS.pack (BS.pack . dropWhile isLower) "Value"
 --
 -- Generics
 --
+
+type XMLGeneric = forall a. (Generic a, GIsXML (Rep a)) => Options -> PU [Node] a
 
 genericXMLPickler opts =
     (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
@@ -266,7 +264,8 @@ xpEmpty = XMLPU
     , unpickleTree = \t -> case t of
           [(Element n _ _)] -> let s = BS.unpack n in case reads s of
               [(x, "")] -> Right x
-          t                 -> Left $ "expected empty element, got: " ++ show t
+              _         -> Left $ "failed to read: " ++ s
+          l                 -> Left $ "expected empty element, got: " ++ show l
     , root        = Nothing
     }
 
