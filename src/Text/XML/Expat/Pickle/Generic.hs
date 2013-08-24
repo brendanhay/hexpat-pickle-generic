@@ -266,7 +266,7 @@ xpEmpty = XMLPU
     , unpickleTree = \t -> case t of
           [(Element n _ _)] -> let s = BS.unpack n in case reads s of
               [(x, "")] -> Right x
-          t -> Left $ "expected empty element, got: " ++ show t
+          t                 -> Left $ "expected empty element, got: " ++ show t
     , root        = Nothing
     }
 
