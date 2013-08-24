@@ -142,7 +142,7 @@ defaultXMLOptions = XMLOptions BS.pack (BS.pack . dropWhile isLower) "Value"
 -- Generics
 --
 
-type XMLGeneric a = (Generic a, GIsXML (Rep a)) => Options -> PU [Node] a
+type XMLGeneric a = (Generic a, GIsXML (Rep a)) => PU [Node] a
 
 genericXMLPickler opts =
     (to, from) `xpWrap` (gXMLPickler opts) (genericXMLPickler opts)
