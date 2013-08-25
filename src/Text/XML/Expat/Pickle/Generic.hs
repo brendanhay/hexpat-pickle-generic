@@ -182,6 +182,12 @@ instance (Selector s, IsXML a) => GIsXML (S1 s (K1 i [a])) where
         key = fromMaybe (xmlListElement opts) $ root pu
         pu  = xmlPickler
 
+instance (Selector s, IsXML a) => GIsXML (S1 s (K1 i (Maybe a))) where
+    gXMLPickler opts _ =
+        (M1 . K1, unK1 . unM1) `xpWrap` xpOption (xpElem name xmlPickler)
+      where
+        name = xmlFieldModifier opts $ selName (undefined :: t s (K1 i (Maybe a)) p)
+
 --
 -- Combinators
 --
