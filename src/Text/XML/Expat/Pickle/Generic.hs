@@ -50,7 +50,6 @@ module Text.XML.Expat.Pickle.Generic
     , xpSum
     , xpEither
     , xpPrim
-    , xpEmpty
     , xpOption
     , xpPair
     , xpTriple
@@ -59,6 +58,8 @@ module Text.XML.Expat.Pickle.Generic
     , xp6Tuple
     , xpUnit
     , xpLift
+    , xpEmpty
+    , xpConst
     , xpText
     , xpText0
     , xpContent
@@ -284,18 +285,6 @@ xpPrim = XMLPU
     , root         = Nothing
     }
 
-xpEmpty :: (Read a, Show a) => PU [Node] a
-xpEmpty = XMLPU
-    { pickleTree   = \x -> [Element (mkAnNName . BS.pack $ show x) [] []]
-    , unpickleTree = \t -> case t of
-          [(Element n _ _)] -> let s = BS.unpack $ nnLocalPart n
-                               in case reads s of
-              [(x, "")] -> Right x
-              _         -> Left $ "failed to read: " ++ s
-          l                 -> Left $ "expected empty element, got: " ++ show l
-    , root        = Nothing
-    }
-
 xpOption :: PU [n] a -> PU [n] (Maybe a)
 xpOption pu = XMLPU
     { pickleTree   = maybe [] (pickleTree pu)
@@ -382,6 +371,31 @@ xpLift :: a -> PU [n] a
 xpLift a = XMLPU
     { pickleTree   = const []
     , unpickleTree = const $ Right a
+    , root         = Nothing
+    }
+
+xpEmpty :: (Read a, Show a) => Maybe ByteString -> PU [Node] a
+xpEmpty mns = XMLPU
+    { pickleTree   = \x -> [Element (name x) [] []]
+    , unpickleTree = \t -> case t of
+          [(Element n _ _)] -> let s = BS.unpack $ nnLocalPart n
+                               in case reads s of
+              [(x, "")] -> Right x
+              _         -> Left $ "failed to read: " ++ s
+          l                 -> Left $ "expected empty element, got: " ++ show l
+    , root        = Nothing
+    }
+  where
+    name x = maybe (mkAnNName local) (`mkNName` local) mns
+      where
+        local = BS.pack $ show x
+
+xpConst :: NName ByteString -> a -> PU [Node] a
+xpConst name val = XMLPU
+    { pickleTree   = \x -> [Element name [] []]
+    , unpickleTree = \t -> case t of
+          [(Element n _ _)] | n == name -> Right val
+          l                             -> Left $ "expected empty element, got: " ++ show l
     , root         = Nothing
     }
 
