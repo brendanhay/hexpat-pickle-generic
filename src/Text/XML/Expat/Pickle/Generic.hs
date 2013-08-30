@@ -37,6 +37,7 @@ module Text.XML.Expat.Pickle.Generic
     -- * Options
     , XMLOptions (..)
     , defaultXMLOptions
+    , namespacedXMLOptions
 
     -- * Generics
     , XMLGeneric
@@ -155,6 +156,13 @@ defaultXMLOptions = XMLOptions
     { xmlCtorModifier  = mkAnNName . BS.pack
     , xmlFieldModifier = mkAnNName . BS.pack . dropWhile isLower
     , xmlListElement   = mkAnNName "Value"
+    }
+
+namespacedXMLOptions :: ByteString -> XMLOptions
+namespacedXMLOptions ns = XMLOptions
+    { xmlCtorModifier  = mkNName ns . BS.pack
+    , xmlFieldModifier = mkNName ns . BS.pack . dropWhile isLower
+    , xmlListElement   = mkNName ns "Value"
     }
 
 --
