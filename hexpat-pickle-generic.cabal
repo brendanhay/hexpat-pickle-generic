@@ -36,6 +36,7 @@ library
         base       >= 4.6 && < 5
       , bytestring
       , hexpat
+      , text
 
 test-suite hexpat-pickle-generic-tests
     default-language:   Haskell2010
@@ -49,8 +50,8 @@ test-suite hexpat-pickle-generic-tests
 
     build-depends:
         base                       >= 4.6 && < 5
-      , bytestring
       , hexpat-pickle-generic
       , QuickCheck                 >= 2.5
       , test-framework             >= 0.8
       , test-framework-quickcheck2 >= 0.3
+      , text

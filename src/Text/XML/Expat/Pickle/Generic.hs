@@ -71,11 +71,12 @@ module Text.XML.Expat.Pickle.Generic
     ) where
 
 import           Data.ByteString                    (ByteString)
-import qualified Data.ByteString.Char8              as BS
 import           Data.Char                          (isLower, isSpace)
 import           Data.Either
 import           Data.Maybe
 import           Data.Monoid
+import           Data.Text                          (Text)
+import qualified Data.Text                          as Text
 import           GHC.Generics
 import           Text.XML.Expat.Format
 import           Text.XML.Expat.Internal.Namespaced
@@ -86,12 +87,12 @@ import           Text.XML.Expat.Tree                hiding (Node, fromQualified)
 -- Class
 --
 
-type Node = NNode ByteString
+type Node = NNode Text
 
 data XMLPU t a = XMLPU
     { pickleTree   :: a -> t
     , unpickleTree :: t -> Either String a
-    , root         :: Maybe (NName ByteString)
+    , root         :: Maybe (NName Text)
     }
 
 type PU = XMLPU
@@ -143,25 +144,25 @@ fromXML = either (Left . show) (unwrap . toNamespaced . toQualified)
 --
 
 data XMLOptions = XMLOptions
-    { xmlCtorModifier  :: String -> NName ByteString
+    { xmlCtorModifier  :: String -> NName Text
       -- ^ Function applied to constructor tags.
-    , xmlFieldModifier :: String -> NName ByteString
+    , xmlFieldModifier :: String -> NName Text
       -- ^ Function applied to record field labels.
-    , xmlListElement   :: NName ByteString
+    , xmlListElement   :: NName Text
       -- ^ Default element name to wrap list items with.
     }
 
 defaultXMLOptions :: XMLOptions
 defaultXMLOptions = XMLOptions
-    { xmlCtorModifier  = mkAnNName . BS.pack
-    , xmlFieldModifier = mkAnNName . BS.pack . dropWhile isLower
+    { xmlCtorModifier  = mkAnNName . Text.pack
+    , xmlFieldModifier = mkAnNName . Text.pack . dropWhile isLower
     , xmlListElement   = mkAnNName "Value"
     }
 
-namespacedXMLOptions :: ByteString -> XMLOptions
+namespacedXMLOptions :: Text -> XMLOptions
 namespacedXMLOptions ns = XMLOptions
-    { xmlCtorModifier  = mkNName ns . BS.pack
-    , xmlFieldModifier = mkNName ns . BS.pack . dropWhile isLower
+    { xmlCtorModifier  = mkNName ns . Text.pack
+    , xmlFieldModifier = mkNName ns . Text.pack . dropWhile isLower
     , xmlListElement   = mkNName ns "Value"
     }
 
@@ -226,7 +227,7 @@ xpWrap (f, g) pu = XMLPU
     , root         = root pu
     }
 
-xpElemList :: NName ByteString -> PU [Node] a -> PU [Node] [a]
+xpElemList :: NName Text -> PU [Node] a -> PU [Node] [a]
 xpElemList name = xpList . xpElem name
 
 xpList :: PU [Node] a -> PU [Node] [a]
@@ -244,7 +245,7 @@ xpList pu = XMLPU
         ([], rs) -> Right rs
         (l:_, _) -> Left l
 
-xpElem :: NName ByteString -> PU [Node] a -> PU [Node] a
+xpElem :: NName Text -> PU [Node] a -> PU [Node] a
 xpElem name pu = XMLPU
     { pickleTree   = \x -> [Element name [] (pickleTree pu x)]
     , unpickleTree = \t ->
@@ -282,11 +283,11 @@ xpEither pa pb = XMLPU
     }
 
 
-xpPrim :: (Read a, Show a) => PU ByteString a
+xpPrim :: (Read a, Show a) => PU Text a
 xpPrim = XMLPU
-    { pickleTree   = BS.pack . show
+    { pickleTree   = Text.pack . show
     , unpickleTree = \t ->
-        let s = BS.unpack t
+        let s = Text.unpack t
         in case reads s of
                [(x, "")] -> Right x
                _         -> Left $ "failed to read text: " ++ s
@@ -382,11 +383,11 @@ xpLift a = XMLPU
     , root         = Nothing
     }
 
-xpEmpty :: (Read a, Show a) => Maybe ByteString -> PU [Node] a
+xpEmpty :: (Read a, Show a) => Maybe Text -> PU [Node] a
 xpEmpty mns = XMLPU
     { pickleTree   = \x -> [Element (name x) [] []]
     , unpickleTree = \t -> case t of
-          [(Element n _ _)] -> let s = BS.unpack $ nnLocalPart n
+          [(Element n _ _)] -> let s = Text.unpack $ nnLocalPart n
                                in case reads s of
               [(x, "")] -> Right x
               _         -> Left $ "failed to read: " ++ s
@@ -396,9 +397,9 @@ xpEmpty mns = XMLPU
   where
     name x = maybe (mkAnNName local) (`mkNName` local) mns
       where
-        local = BS.pack $ show x
+        local = Text.pack $ show x
 
-xpConst :: NName ByteString -> a -> PU [Node] a
+xpConst :: NName Text -> a -> PU [Node] a
 xpConst name val = XMLPU
     { pickleTree   = \x -> [Element name [] []]
     , unpickleTree = \t -> case t of
@@ -407,21 +408,21 @@ xpConst name val = XMLPU
     , root         = Nothing
     }
 
-xpText :: PU ByteString ByteString
+xpText :: PU Text Text
 xpText = XMLPU
     { pickleTree   = id
-    , unpickleTree = \t -> if BS.null t then Left "empty text" else Right t
+    , unpickleTree = \t -> if Text.null t then Left "empty text" else Right t
     , root         = Nothing
     }
 
-xpText0 :: PU ByteString ByteString
+xpText0 :: PU Text Text
 xpText0 = XMLPU
     { pickleTree   = id
     , unpickleTree = Right
     , root         = Nothing
     }
 
-xpContent :: PU ByteString a -> PU [Node] a
+xpContent :: PU Text a -> PU [Node] a
 xpContent pu = XMLPU
     { pickleTree   = \t ->
           let txt = pickleTree pu t
@@ -433,13 +434,7 @@ xpContent pu = XMLPU
     extract (Element _ _ cs) = strip . mconcat $ map extract cs
     extract (Text txt)       = strip txt
 
-    strip = snd . BS.break valid . fst . BS.breakEnd valid
-
-    valid c
-        | isSpace c = False
-        | c == '\r' = False
-        | c == '\n' = False
-        | otherwise = True
+    strip = Text.unwords . Text.words . Text.intercalate " " . Text.lines
 
 --
 -- Instances
@@ -463,7 +458,7 @@ instance IsXML Double where
 instance IsXML Float where
     xmlPickler = xpContent xpPrim
 
-instance IsXML ByteString where
+instance IsXML Text where
     xmlPickler = xpContent xpText
 
 --
