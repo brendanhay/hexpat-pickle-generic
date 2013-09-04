@@ -32,6 +32,7 @@ module Text.XML.Expat.Pickle.Generic
     , fromXML
 
     -- * Data Types
+    , Node
     , XMLPU      (..)
 
     -- * Options
@@ -71,12 +72,13 @@ module Text.XML.Expat.Pickle.Generic
     ) where
 
 import           Data.ByteString                    (ByteString)
+import qualified Data.ByteString.Char8              as BS
 import           Data.Char                          (isLower, isSpace)
 import           Data.Either
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Text                          (Text)
-import qualified Data.Text                          as Text
+import           Data.Text.Encoding
 import           GHC.Generics
 import           Text.XML.Expat.Format
 import           Text.XML.Expat.Internal.Namespaced
@@ -87,12 +89,12 @@ import           Text.XML.Expat.Tree                hiding (Node, fromQualified)
 -- Class
 --
 
-type Node = NNode Text
+type Node = NNode ByteString
 
 data XMLPU t a = XMLPU
     { pickleTree   :: a -> t
     , unpickleTree :: t -> Either String a
-    , root         :: Maybe (NName Text)
+    , root         :: Maybe (NName ByteString)
     }
 
 type PU = XMLPU
@@ -144,25 +146,25 @@ fromXML = either (Left . show) (unwrap . toNamespaced . toQualified)
 --
 
 data XMLOptions = XMLOptions
-    { xmlCtorModifier  :: String -> NName Text
+    { xmlCtorModifier  :: String -> NName ByteString
       -- ^ Function applied to constructor tags.
-    , xmlFieldModifier :: String -> NName Text
+    , xmlFieldModifier :: String -> NName ByteString
       -- ^ Function applied to record field labels.
-    , xmlListElement   :: NName Text
+    , xmlListElement   :: NName ByteString
       -- ^ Default element name to wrap list items with.
     }
 
 defaultXMLOptions :: XMLOptions
 defaultXMLOptions = XMLOptions
-    { xmlCtorModifier  = mkAnNName . Text.pack
-    , xmlFieldModifier = mkAnNName . Text.pack . dropWhile isLower
+    { xmlCtorModifier  = mkAnNName . BS.pack
+    , xmlFieldModifier = mkAnNName . BS.pack . dropWhile isLower
     , xmlListElement   = mkAnNName "Value"
     }
 
-namespacedXMLOptions :: Text -> XMLOptions
+namespacedXMLOptions :: ByteString -> XMLOptions
 namespacedXMLOptions ns = XMLOptions
-    { xmlCtorModifier  = mkNName ns . Text.pack
-    , xmlFieldModifier = mkNName ns . Text.pack . dropWhile isLower
+    { xmlCtorModifier  = mkNName ns . BS.pack
+    , xmlFieldModifier = mkNName ns . BS.pack . dropWhile isLower
     , xmlListElement   = mkNName ns "Value"
     }
 
@@ -222,19 +224,19 @@ instance (Selector s, IsXML a) => GIsXML (S1 s (K1 i (Maybe a))) where
 
 xpWrap :: (a -> b, b -> a) -> PU [n] a -> PU [n] b
 xpWrap (f, g) pu = XMLPU
-    { pickleTree   = pickleTree pu . g
+    { root         = root pu
+    , pickleTree   = pickleTree pu . g
     , unpickleTree = fmap f . unpickleTree pu
-    , root         = root pu
     }
 
-xpElemList :: NName Text -> PU [Node] a -> PU [Node] [a]
+xpElemList :: NName ByteString -> PU [Node] a -> PU [Node] [a]
 xpElemList name = xpList . xpElem name
 
 xpList :: PU [Node] a -> PU [Node] [a]
 xpList pu = XMLPU
-    { pickleTree   = concatMap (pickleTree pu)
+    { root         = root pu
+    , pickleTree   = concatMap (pickleTree pu)
     , unpickleTree = concatEithers . unpickle
-    , root         = root pu
     }
   where
     unpickle (e@(Element _ _ _):es) = unpickleTree pu [e] : unpickle es
@@ -245,9 +247,10 @@ xpList pu = XMLPU
         ([], rs) -> Right rs
         (l:_, _) -> Left l
 
-xpElem :: NName Text -> PU [Node] a -> PU [Node] a
+xpElem :: NName ByteString -> PU [Node] a -> PU [Node] a
 xpElem name pu = XMLPU
-    { pickleTree   = \x -> [Element name [] (pickleTree pu x)]
+    { root         = Just name
+    , pickleTree   = \x -> [Element name [] (pickleTree pu x)]
     , unpickleTree = \t ->
           let children = map matching t
           in case catMaybes children of
@@ -255,7 +258,6 @@ xpElem name pu = XMLPU
                  (x:_) -> case x of
                      Left e -> Left $ "in " ++ tag ++ ", " ++ e
                      r      -> r
-    , root = Just name
     }
   where
     matching (Element n _ cs)
@@ -275,75 +277,75 @@ xpSum left right = (inp, out) `xpWrap` xpEither left right
 
 xpEither :: PU [t] a -> PU [t] b -> PU [t] (Either a b)
 xpEither pa pb = XMLPU
-    { pickleTree   = either (pickleTree pa) (pickleTree pb)
+    { root         = listToMaybe $ catMaybes [root pa, root pb]
+    , pickleTree   = either (pickleTree pa) (pickleTree pb)
     , unpickleTree = \t -> case unpickleTree pa t of
           Right x -> Right . Left $ x
           Left  _ -> Right `fmap` unpickleTree pb t
-    , root     = listToMaybe $ catMaybes [root pa, root pb]
     }
 
-
-xpPrim :: (Read a, Show a) => PU Text a
+xpPrim :: (Read a, Show a) => PU ByteString a
 xpPrim = XMLPU
-    { pickleTree   = Text.pack . show
+    { root         = Nothing
+    , pickleTree   = BS.pack . show
     , unpickleTree = \t ->
-        let s = Text.unpack t
+        let s = BS.unpack t
         in case reads s of
                [(x, "")] -> Right x
                _         -> Left $ "failed to read text: " ++ s
-    , root         = Nothing
     }
 
 xpOption :: PU [n] a -> PU [n] (Maybe a)
 xpOption pu = XMLPU
-    { pickleTree   = maybe [] (pickleTree pu)
+    { root         = root pu
+    , pickleTree   = maybe [] (pickleTree pu)
     , unpickleTree = Right . either (const Nothing) Just . unpickleTree pu
-    , root     = root pu
     }
 
 xpPair :: PU [n] a -> PU [n] b -> PU [n] (a, b)
 xpPair pa pb = XMLPU
-    { pickleTree   = \(a, b) -> concat [pickleTree pa a, pickleTree pb b]
+    { root         = listToMaybe $ catMaybes [root pa, root pb]
+    , pickleTree   = \(a, b) -> concat [pickleTree pa a, pickleTree pb b]
     , unpickleTree = \t ->
           case (unpickleTree pa t, unpickleTree pb t) of
               (Right a, Right b) -> Right (a, b)
               (Left e,  _)       -> Left $ "in 1st of pair, " ++ e
               (_,       Left e)  -> Left $ "in 2nd of pair, " ++ e
-    , root = listToMaybe $ catMaybes [root pa, root pb]
     }
 
 xpTriple :: PU [n] a -> PU [n] b -> PU [n] c -> PU [n] (a, b, c)
 xpTriple pa pb pc = XMLPU
-     { pickleTree   = \(a, b, c) ->
-           concat [pickleTree pa a, pickleTree pb b, pickleTree pc c]
-     , unpickleTree = \t ->
-           case (unpickleTree pa t, unpickleTree pb t, unpickleTree pc t) of
-                (Right a, Right b, Right c) -> Right (a, b, c)
-                (Left e, _, _) -> Left $ "in 1st of triple, " ++ e
-                (_, Left e, _) -> Left $ "in 2nd of triple, " ++ e
-                (_, _, Left e) -> Left $ "in 3rd of triple, " ++ e
-    , root = listToMaybe $ catMaybes [root pa, root pb, root pc]
+    { root         = listToMaybe $ catMaybes [root pa, root pb, root pc]
+    , pickleTree   = \(a, b, c) ->
+          concat [pickleTree pa a, pickleTree pb b, pickleTree pc c]
+    , unpickleTree = \t ->
+          case (unpickleTree pa t, unpickleTree pb t, unpickleTree pc t) of
+               (Right a, Right b, Right c) -> Right (a, b, c)
+               (Left e, _, _) -> Left $ "in 1st of triple, " ++ e
+               (_, Left e, _) -> Left $ "in 2nd of triple, " ++ e
+               (_, _, Left e) -> Left $ "in 3rd of triple, " ++ e
     }
 
 xp4Tuple :: PU [n] a -> PU [n] b -> PU [n] c -> PU [n] d -> PU [n] (a, b, c, d)
 xp4Tuple pa pb pc pd = XMLPU
-     { pickleTree   = \(a, b, c, d) ->
-           concat [pickleTree pa a, pickleTree pb b, pickleTree pc c, pickleTree pd d]
-     , unpickleTree = \t ->
-           case (unpickleTree pa t, unpickleTree pb t, unpickleTree pc t,
-                 unpickleTree pd t) of
-               (Right a, Right b, Right c, Right d) -> Right (a, b, c, d)
-               (Left e, _, _, _) -> Left $ "in 1st of 4-tuple, " ++ e
-               (_, Left e, _, _) -> Left $ "in 2nd of 4-tuple, " ++ e
-               (_, _, Left e, _) -> Left $ "in 3rd of 4-tuple, " ++ e
-               (_, _, _, Left e) -> Left $ "in 4th of 4-tuple, " ++ e
-    , root = listToMaybe $ catMaybes [root pa, root pb, root pc, root pd]
-    }
+    { root         = listToMaybe $ catMaybes [root pa, root pb, root pc, root pd]
+    , pickleTree   = \(a, b, c, d) ->
+          concat [pickleTree pa a, pickleTree pb b, pickleTree pc c, pickleTree pd d]
+    , unpickleTree = \t ->
+          case (unpickleTree pa t, unpickleTree pb t, unpickleTree pc t,
+                unpickleTree pd t) of
+              (Right a, Right b, Right c, Right d) -> Right (a, b, c, d)
+              (Left e, _, _, _) -> Left $ "in 1st of 4-tuple, " ++ e
+              (_, Left e, _, _) -> Left $ "in 2nd of 4-tuple, " ++ e
+              (_, _, Left e, _) -> Left $ "in 3rd of 4-tuple, " ++ e
+              (_, _, _, Left e) -> Left $ "in 4th of 4-tuple, " ++ e
+   }
 
 xp5Tuple :: PU [n] a -> PU [n] b -> PU [n] c -> PU [n] d -> PU [n] e -> PU [n] (a, b, c, d, e)
 xp5Tuple pa pb pc pd pe = XMLPU
-    { pickleTree   = \(a, b, c, d, e) ->
-           concat [pickleTree pa a, pickleTree pb b, pickleTree pc c, pickleTree pd d, pickleTree pe e]
+    { root         = listToMaybe $ catMaybes [root pa, root pb, root pc, root pd, root pe]
+    , pickleTree   = \(a, b, c, d, e) ->
+          concat [pickleTree pa a, pickleTree pb b, pickleTree pc c, pickleTree pd d, pickleTree pe e]
     , unpickleTree = \t ->
           case (unpickleTree pa t, unpickleTree pb t, unpickleTree pc t,
                 unpickleTree pd t, unpickleTree pe t) of
@@ -353,12 +355,12 @@ xp5Tuple pa pb pc pd pe = XMLPU
               (_, _, Left e, _, _) -> Left $ "in 3rd of 5-tuple, " ++ e
               (_, _, _, Left e, _) -> Left $ "in 4th of 5-tuple, " ++ e
               (_, _, _, _, Left e) -> Left $ "in 5th of 5-tuple, " ++ e
-    , root = listToMaybe $ catMaybes [root pa, root pb, root pc, root pd, root pe]
     }
 
 xp6Tuple :: PU [n] a -> PU [n] b -> PU [n] c -> PU [n] d -> PU [n] e -> PU [n] f -> PU [n] (a, b, c, d, e, f)
 xp6Tuple pa pb pc pd pe pf = XMLPU
-    { pickleTree   = \(a, b, c, d, e, f) ->
+    { root         = listToMaybe $ catMaybes [root pa, root pb, root pc, root pd, root pe, root pf]
+    , pickleTree   = \(a, b, c, d, e, f) ->
            concat [pickleTree pa a, pickleTree pb b, pickleTree pc c, pickleTree pd d, pickleTree pe e, pickleTree pf f]
     , unpickleTree = \t ->
           case (unpickleTree pa t, unpickleTree pb t, unpickleTree pc t,
@@ -370,7 +372,6 @@ xp6Tuple pa pb pc pd pe pf = XMLPU
               (_, _, _, Left e, _, _) -> Left $ "in 4th of 6-tuple, " ++ e
               (_, _, _, _, Left e, _) -> Left $ "in 5th of 6-tuple, " ++ e
               (_, _, _, _, _, Left e) -> Left $ "in 6th of 6-tuple, " ++ e
-    , root = listToMaybe $ catMaybes [root pa, root pb, root pc, root pd, root pe, root pf]
     }
 
 xpUnit :: PU [n] ()
@@ -378,63 +379,69 @@ xpUnit = xpLift ()
 
 xpLift :: a -> PU [n] a
 xpLift a = XMLPU
-    { pickleTree   = const []
+    { root         = Nothing
+    , pickleTree   = const []
     , unpickleTree = const $ Right a
-    , root         = Nothing
     }
 
-xpEmpty :: (Read a, Show a) => Maybe Text -> PU [Node] a
+xpEmpty :: (Read a, Show a) => Maybe ByteString -> PU [Node] a
 xpEmpty mns = XMLPU
-    { pickleTree   = \x -> [Element (name x) [] []]
+    { root         = Nothing
+    , pickleTree   = \x -> [Element (name x) [] []]
     , unpickleTree = \t -> case t of
-          [(Element n _ _)] -> let s = Text.unpack $ nnLocalPart n
+          [(Element n _ _)] -> let s = BS.unpack $ nnLocalPart n
                                in case reads s of
               [(x, "")] -> Right x
               _         -> Left $ "failed to read: " ++ s
           l                 -> Left $ "expected empty element, got: " ++ show l
-    , root        = Nothing
     }
   where
     name x = maybe (mkAnNName local) (`mkNName` local) mns
       where
-        local = Text.pack $ show x
+        local = BS.pack $ show x
 
-xpConst :: NName Text -> a -> PU [Node] a
+xpConst :: NName ByteString -> a -> PU [Node] a
 xpConst name val = XMLPU
-    { pickleTree   = \x -> [Element name [] []]
+    { root         = Nothing
+    , pickleTree   = \_ -> [Element name [] []]
     , unpickleTree = \t -> case t of
           [(Element n _ _)] | n == name -> Right val
           l                             -> Left $ "expected empty element, got: " ++ show l
-    , root         = Nothing
     }
 
-xpText :: PU Text Text
+xpText :: PU ByteString ByteString
 xpText = XMLPU
-    { pickleTree   = id
-    , unpickleTree = \t -> if Text.null t then Left "empty text" else Right t
-    , root         = Nothing
+    { root         = Nothing
+    , pickleTree   = id
+    , unpickleTree = \t -> if BS.null t then Left "empty text" else Right t
     }
 
-xpText0 :: PU Text Text
+xpText0 :: PU ByteString ByteString
 xpText0 = XMLPU
-    { pickleTree   = id
+    { root         = Nothing
+    , pickleTree   = id
     , unpickleTree = Right
-    , root         = Nothing
     }
 
-xpContent :: PU Text a -> PU [Node] a
+xpContent :: PU ByteString a -> PU [Node] a
 xpContent pu = XMLPU
-    { pickleTree   = \t ->
+    { root         = root pu
+    , pickleTree   = \t ->
           let txt = pickleTree pu t
           in if gxNullString txt then [] else [Text txt]
     , unpickleTree = unpickleTree pu . mconcat . map extract
-    , root     = root pu
     }
   where
     extract (Element _ _ cs) = strip . mconcat $ map extract cs
     extract (Text txt)       = strip txt
 
-    strip = Text.unwords . Text.words . Text.intercalate " " . Text.lines
+    strip = snd . BS.break valid . fst . BS.breakEnd valid
+
+    valid c
+        | isSpace c = False
+        | c == '\r' = False
+        | c == '\n' = False
+        | otherwise = True
 
 --
 -- Instances
@@ -458,8 +465,11 @@ instance IsXML Double where
 instance IsXML Float where
     xmlPickler = xpContent xpPrim
 
-instance IsXML Text where
+instance IsXML ByteString where
     xmlPickler = xpContent xpText
+
+instance IsXML Text where
+    xmlPickler = (decodeUtf8, encodeUtf8) `xpWrap` xmlPickler
 
 --
 -- Qualified Prefix Hack
