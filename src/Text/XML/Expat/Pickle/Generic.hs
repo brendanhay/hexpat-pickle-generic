@@ -110,36 +110,27 @@ class IsXML a where
 --
 
 toXML :: IsXML a => a -> ByteString
-toXML = format'
-    . fromQualified
-    . fromNamespaced
-    . maybe head (\n -> Element n []) (root pu)
-    . pickleTree pu
-  where
-    pu = xmlPickler
+toXML = toIndentedXML 2
 
 toIndentedXML :: IsXML a => Int -> a -> ByteString
 toIndentedXML i = format'
     . indent i
     . fromQualified
     . fromNamespaced
-    . maybe head (\n -> Element n []) (root pu)
-    . pickleTree pu
-  where
-    pu = xmlPickler
+    . pickleTree (xpRoot xmlPickler)
 
 fromXML :: IsXML a => ByteString -> Either String a
-fromXML = either (Left . show) (unwrap . toNamespaced . toQualified)
+fromXML = either (Left . show) (unpickleTree (xpRoot xmlPickler) . toNamespaced . toQualified)
     . parse' defaultParseOptions
-  where
-    unwrap e@(Element n _ cs) = case root pu of
-        Just x | x == n    -> unpickleTree pu cs
-               | otherwise -> Left $
-            "expected root: " ++ show x ++ ", got: " ++ show n
-        Nothing -> unpickleTree pu [e]
-    unwrap t = Left $ "unexpected root: " ++ show t
+--  where
+    -- unwrap e@(Element n _ cs) = case root pu of
+    --     Just x | x == n    -> unpickleTree pu cs
+    --            | otherwise -> Left $
+    --         "expected root: " ++ show x ++ ", got: " ++ show n
+    --     Nothing -> unpickleTree pu [e]
+    -- unwrap t = Left $ "unexpected root: " ++ show t
 
-    pu = xmlPickler
+    -- pu = xmlPickler
 
 --
 -- Options
@@ -222,10 +213,18 @@ instance (Selector s, IsXML a) => GIsXML (S1 s (K1 i (Maybe a))) where
 -- Combinators
 --
 
+xpRoot :: PU [Node] a -> PU Node a
+xpRoot pu = pu
+    { pickleTree   =
+          (maybe head (\n -> Element n []) $ root pu) . pickleTree pu
+    , unpickleTree = \t -> case t of
+          (Element _ _ cs) -> unpickleTree pu cs
+          t1               -> unpickleTree pu [t1]
+    }
+
 xpWrap :: (a -> b, b -> a) -> PU [n] a -> PU [n] b
-xpWrap (f, g) pu = XMLPU
-    { root         = root pu
-    , pickleTree   = pickleTree pu . g
+xpWrap (f, g) pu = pu
+    { pickleTree   = pickleTree pu . g
     , unpickleTree = fmap f . unpickleTree pu
     }
 
@@ -233,9 +232,8 @@ xpElemList :: NName ByteString -> PU [Node] a -> PU [Node] [a]
 xpElemList name = xpList . xpElem name
 
 xpList :: PU [Node] a -> PU [Node] [a]
-xpList pu = XMLPU
-    { root         = root pu
-    , pickleTree   = concatMap (pickleTree pu)
+xpList pu = pu
+    { pickleTree   = concatMap (pickleTree pu)
     , unpickleTree = concatEithers . unpickle
     }
   where
@@ -296,9 +294,8 @@ xpPrim = XMLPU
     }
 
 xpOption :: PU [n] a -> PU [n] (Maybe a)
-xpOption pu = XMLPU
-    { root         = root pu
-    , pickleTree   = maybe [] (pickleTree pu)
+xpOption pu = pu
+    { pickleTree   = maybe [] (pickleTree pu)
     , unpickleTree = Right . either (const Nothing) Just . unpickleTree pu
     }
 
