@@ -120,17 +120,9 @@ toIndentedXML i = format'
     . pickleTree (xpRoot xmlPickler)
 
 fromXML :: IsXML a => ByteString -> Either String a
-fromXML = either (Left . show) (unpickleTree (xpRoot xmlPickler) . toNamespaced . toQualified)
-    . parse' defaultParseOptions
---  where
-    -- unwrap e@(Element n _ cs) = case root pu of
-    --     Just x | x == n    -> unpickleTree pu cs
-    --            | otherwise -> Left $
-    --         "expected root: " ++ show x ++ ", got: " ++ show n
-    --     Nothing -> unpickleTree pu [e]
-    -- unwrap t = Left $ "unexpected root: " ++ show t
-
-    -- pu = xmlPickler
+fromXML = either (Left . show) unpickle . parse' defaultParseOptions
+  where
+    unpickle = unpickleTree (xpRoot xmlPickler) . toNamespaced . toQualified
 
 --
 -- Options
