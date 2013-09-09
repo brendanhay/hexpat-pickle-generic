@@ -5,13 +5,13 @@
 *.chi
 *.chs.h
 *.imports
+cabal.sandbox.config
 
 # Dirs
-cabal-dev
+.cabal-sandbox
 bin
 dist
 tmp
-.shelly
 vendor
 
 # CTAGS
@@ -29,10 +29,3 @@ tags
 
 # OSX
 .DS_Store
-
-# Keiretsu
-.env
-Procfile
-
-# Protobufs
-Protocol*
