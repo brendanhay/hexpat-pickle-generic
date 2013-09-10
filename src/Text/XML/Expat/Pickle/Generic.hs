@@ -382,21 +382,21 @@ xpEmpty mns = XMLPU
                                in case reads s of
               [(x, "")] -> Right x
               _         -> Left $ "failed to read: " ++ s
-          l                 -> Left $ "expected empty element, got: " ++ show l
+          l -> Left $ "expected empty element, got: " ++ show l
     }
   where
     name x = maybe (mkAnNName local) (`mkNName` local) mns
       where
         local = BS.pack $ show x
 
-xpConst :: NName ByteString -> a -> PU [Node] a
-xpConst name val = XMLPU
-    { root         = Nothing
-    , pickleTree   = \_ -> [Element name [] []]
-    , unpickleTree = \t -> case t of
-          [(Element n _ _)] | n == name -> Right val
-          l                             -> Left $ "expected empty element, got: " ++ show l
+xpConst :: Show a => ByteString -> a -> XMLPU [Node] a
+xpConst ns val = XMLPU
+    { root         = Just name
+    , pickleTree   = const [Element name [] []]
+    , unpickleTree = const $ Right val
     }
+  where
+    name = mkNName ns . BS.pack $ show val
 
 xpText :: PU ByteString ByteString
 xpText = XMLPU
