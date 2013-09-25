@@ -8,7 +8,7 @@ all: build
 build: cabal.sandbox.config
 	cabal build $(addprefix -,$(findstring j,$(MAKEFLAGS)))
 
-install: add-sources
+install:
 	cabal install $(FLAGS)
 
 clean:
@@ -24,7 +24,5 @@ lint:
 doc:
 	cabal haddock
 
-add-sources: cabal.sandbox.config
-
 cabal.sandbox.config:
-	cabal sandbox init
+	cabal sandbox init && $(MAKE) install

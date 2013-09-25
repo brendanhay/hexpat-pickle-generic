@@ -221,7 +221,11 @@ xpWrap (f, g) pu = pu
     }
 
 xpElemList :: NName ByteString -> PU [Node] a -> PU [Node] [a]
-xpElemList name = xpList . xpElem name
+xpElemList name pu = pu'
+    { unpickleTree = either (const $ Right []) Right . unpickleTree pu'
+    }
+  where
+    pu' = xpList $ xpElem name pu
 
 xpList :: PU [Node] a -> PU [Node] [a]
 xpList pu = pu
