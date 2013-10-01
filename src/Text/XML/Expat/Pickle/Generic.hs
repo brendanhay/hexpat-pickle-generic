@@ -188,8 +188,9 @@ instance (Selector s, GIsXML a) => GIsXML (S1 s a) where
         ((M1, unM1) `xpWrap` gXMLPickler opts f)
 
 instance (Selector s, IsXML a) => GIsXML (S1 s (K1 i [a])) where
-    gXMLPickler opts _ = xpElem
+    gXMLPickler opts _ = xpDefault
         (xmlFieldModifier opts $ selName (undefined :: t s (K1 i [a]) p))
+        (M1 $ K1 [])
         ((M1 . K1, unK1 . unM1) `xpWrap` xpList (xpElem key pu))
       where
         key = fromMaybe (xmlListElement opts) $ root pu
@@ -221,11 +222,7 @@ xpWrap (f, g) pu = pu
     }
 
 xpElemList :: NName ByteString -> PU [Node] a -> PU [Node] [a]
-xpElemList name pu = pu'
-    { unpickleTree = either (const $ Right []) Right . unpickleTree pu'
-    }
-  where
-    pu' = xpList $ xpElem name pu
+xpElemList name = xpList . xpElem name
 
 xpList :: PU [Node] a -> PU [Node] [a]
 xpList pu = pu
@@ -249,6 +246,25 @@ xpElem name pu = XMLPU
           let children = map matching t
           in case catMaybes children of
                  []    -> Left $ "can't find " ++ tag
+                 (x:_) -> case x of
+                     Left e -> Left $ "in " ++ tag ++ ", " ++ e
+                     r      -> r
+    }
+  where
+    matching (Element n _ cs)
+        | n == name = Just $ unpickleTree pu cs
+    matching _      = Nothing
+
+    tag = "<" ++ show name ++ ">"
+
+xpDefault :: NName ByteString -> a -> PU [Node] a -> PU [Node] a
+xpDefault name val pu = XMLPU
+    { root         = Just name
+    , pickleTree   = \x -> [Element name [] (pickleTree pu x)]
+    , unpickleTree = \t ->
+          let children = map matching t
+          in case catMaybes children of
+                 []    -> Right val
                  (x:_) -> case x of
                      Left e -> Left $ "in " ++ tag ++ ", " ++ e
                      r      -> r
