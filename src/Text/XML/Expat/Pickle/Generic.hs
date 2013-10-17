@@ -441,16 +441,8 @@ xpContent pu = XMLPU
     , unpickleTree = unpickleTree pu . mconcat . map extract
     }
   where
-    extract (Element _ _ cs) = strip . mconcat $ map extract cs
-    extract (Text txt)       = strip txt
-
-    strip = snd . BS.break valid . fst . BS.breakEnd valid
-
-    valid c
-        | isSpace c = False
-        | c == '\r' = False
-        | c == '\n' = False
-        | otherwise = True
+    extract (Element _ _ cs) = mconcat $ map extract cs
+    extract (Text txt)       = txt
 
 --
 -- Instances
